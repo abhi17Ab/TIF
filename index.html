@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D Model Viewer</title>
+  <title>3D AR Viewer</title>
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
   <style>
     * {
@@ -12,130 +12,80 @@
       box-sizing: border-box;
     }
     
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      overflow: hidden;
-    }
-    
-    .container {
+    html, body {
       width: 100%;
-      max-width: 900px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 30px;
+      height: 100%;
       overflow: hidden;
-      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.3);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    
-    .header {
-      text-align: center;
-      padding: 40px 20px 30px;
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
-    }
-    
-    h1 {
-      font-size: 2.5rem;
-      color: white;
-      font-weight: 300;
-      letter-spacing: 2px;
-      margin-bottom: 10px;
-    }
-    
-    .subtitle {
-      font-size: 1rem;
-      color: rgba(255, 255, 255, 0.8);
-      font-weight: 300;
-    }
-    
-    .model-viewer-container {
-      position: relative;
-      width: 100%;
-      height: 70vh;
-      min-height: 500px;
     }
     
     model-viewer {
       width: 100%;
       height: 100%;
-      background: transparent;
+      position: fixed;
+      top: 0;
+      left: 0;
     }
     
+    /* Hide AR button initially */
     .ar-button {
-      position: absolute;
-      bottom: 30px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      padding: 18px 40px;
-      border-radius: 50px;
-      cursor: pointer;
-      font-size: 1.1rem;
-      transition: all 0.3s ease;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-      z-index: 10;
-      font-weight: 500;
-      letter-spacing: 1px;
-    }
-    
-    .ar-button:hover {
-      transform: translateX(-50%) translateY(-3px);
-      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
-    }
-    
-    .ar-button:active {
-      transform: translateX(-50%) translateY(0);
-    }
-    
-    @media (max-width: 768px) {
-      h1 {
-        font-size: 2rem;
-      }
-      
-      .model-viewer-container {
-        height: 60vh;
-        min-height: 400px;
-      }
-      
-      .ar-button {
-        padding: 15px 35px;
-        font-size: 1rem;
-      }
+      display: none;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>3D VIEWER</h1>
-      <p class="subtitle">Experience in Augmented Reality</p>
-    </div>
+  <model-viewer 
+    id="viewer"
+    src="./Diwali_crackers.glb" 
+    ar 
+    ar-modes="webxr scene-viewer quick-look" 
+    camera-controls 
+    tone-mapping="neutral"
+    shadow-intensity="1" 
+    autoplay 
+    exposure="1" 
+    shadow-softness="0.5">
     
-    <div class="model-viewer-container">
-      <model-viewer 
-        src="./Diwali_crackers.glb" 
-        ar 
-        ar-modes="webxr scene-viewer quick-look" 
-        camera-controls 
-        tone-mapping="neutral"
-        shadow-intensity="1" 
-        autoplay 
-        exposure="1" 
-        shadow-softness="0.5">
-        
-        <button slot="ar-button" class="ar-button">
-          View in AR
-        </button>
-      </model-viewer>
-    </div>
-  </div>
+    <button slot="ar-button" id="ar-button" class="ar-button">View in AR</button>
+  </model-viewer>
+  
+  <script>
+    // Detect if device is mobile
+    function isMobile() {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+    
+    window.addEventListener('DOMContentLoaded', () => {
+      const modelViewer = document.getElementById('viewer');
+      const arButton = document.getElementById('ar-button');
+      
+      if (isMobile()) {
+        // On mobile: automatically trigger AR when model loads
+        modelViewer.addEventListener('load', () => {
+          // Small delay to ensure everything is ready
+          setTimeout(() => {
+            if (arButton) {
+              arButton.click();
+            }
+          }, 500);
+        });
+      } else {
+        // On desktop: enter fullscreen mode
+        modelViewer.addEventListener('load', () => {
+          const elem = document.documentElement;
+          if (elem.requestFullscreen) {
+            elem.requestFullscreen().catch(err => {
+              console.log('Fullscreen request failed:', err);
+            });
+          } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen();
+          } else if (elem.mozRequestFullScreen) {
+            elem.mozRequestFullScreen();
+          } else if (elem.msRequestFullscreen) {
+            elem.msRequestFullscreen();
+          }
+        });
+      }
+    });
+  </script>
 </body>
 </html>
