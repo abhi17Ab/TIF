@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D AR Viewer</title>
+  <title>Tap to AR</title>
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
   <style>
     * {
@@ -18,6 +18,45 @@
       overflow: hidden;
     }
     
+    .tap-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      z-index: 1000;
+      cursor: pointer;
+    }
+    
+    .tap-overlay h1 {
+      font-size: 2.5rem;
+      margin-bottom: 20px;
+      font-weight: 300;
+      letter-spacing: 2px;
+    }
+    
+    .tap-overlay p {
+      font-size: 1.2rem;
+      opacity: 0.9;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 0.9; }
+      50% { opacity: 0.5; }
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
     model-viewer {
       width: 100%;
       height: 100%;
@@ -26,13 +65,17 @@
       left: 0;
     }
     
-    /* Hide AR button initially */
     .ar-button {
       display: none;
     }
   </style>
 </head>
 <body>
+  <div id="tap-overlay" class="tap-overlay">
+    <h1>TAP TO VIEW IN AR</h1>
+    <p>Touch anywhere to continue</p>
+  </div>
+  
   <model-viewer 
     id="viewer"
     src="./Diwali_crackers.glb" 
@@ -49,42 +92,34 @@
   </model-viewer>
   
   <script>
-    // Detect if device is mobile
     function isMobile() {
       return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     }
     
     window.addEventListener('DOMContentLoaded', () => {
       const modelViewer = document.getElementById('viewer');
-      const arButton = document.getElementById('ar-button');
+      const tapOverlay = document.getElementById('tap-overlay');
       
-      if (isMobile()) {
-        // On mobile: automatically trigger AR when model loads
-        modelViewer.addEventListener('load', () => {
-          // Small delay to ensure everything is ready
-          setTimeout(() => {
-            if (arButton) {
-              arButton.click();
-            }
-          }, 500);
-        });
-      } else {
-        // On desktop: enter fullscreen mode
-        modelViewer.addEventListener('load', () => {
+      // Wait for model to load
+      modelViewer.addEventListener('load', () => {
+        if (isMobile()) {
+          // On mobile: show tap overlay
+          tapOverlay.addEventListener('click', () => {
+            tapOverlay.classList.add('hidden');
+            // Activate AR immediately after user tap
+            modelViewer.activateAR();
+          });
+        } else {
+          // On desktop: hide overlay and go fullscreen
+          tapOverlay.classList.add('hidden');
           const elem = document.documentElement;
           if (elem.requestFullscreen) {
             elem.requestFullscreen().catch(err => {
               console.log('Fullscreen request failed:', err);
             });
-          } else if (elem.webkitRequestFullscreen) {
-            elem.webkitRequestFullscreen();
-          } else if (elem.mozRequestFullScreen) {
-            elem.mozRequestFullScreen();
-          } else if (elem.msRequestFullscreen) {
-            elem.msRequestFullscreen();
           }
-        });
-      }
+        }
+      });
     });
   </script>
 </body>
