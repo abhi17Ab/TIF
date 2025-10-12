@@ -296,6 +296,7 @@
                     <li>Hold your hand out with palm facing the camera</li>
                     <li>The 3D model will automatically appear on your palm</li>
                     <li>Move your hand to see the model from different angles</li>
+                    <li>Move your hand closer/farther to scale the model</li>
                     <li>Use the model selector to change the 3D object</li>
                 </ol>
             </div>
@@ -330,6 +331,8 @@
         // Hand tracking variables
         let handDetected = false;
         let lastPalmPosition = { x: 0, y: 0 };
+        let handSizeHistory = [];
+        const MAX_HISTORY = 5;
         
         // DOM elements
         const startButton = document.getElementById('start-button');
@@ -539,6 +542,7 @@
             
             isTracking = false;
             handDetected = false;
+            handSizeHistory = [];
             startButton.textContent = 'Start Hand Tracking';
             statusElement.textContent = 'Hand tracking stopped.';
             palmIndicator.classList.remove('visible');
@@ -573,7 +577,6 @@
                 }
                 
                 // Calculate position on the UPPER side of the palm
-                // We'll use the middle finger MCP (9) as base and move towards the fingers
                 const middleBase = landmarks[9]; // Middle finger MCP joint
                 const middleTip = landmarks[12]; // Middle finger tip
                 
@@ -597,7 +600,10 @@
                 
                 lastPalmPosition = { x: palmX, y: palmY };
                 
-                // Update model position and visibility
+                // Calculate hand size for distance estimation
+                const handSize = calculateHandSize(landmarks);
+                
+                // Update model position, visibility, and scale
                 if (currentModel) {
                     currentModel.visible = true;
                     
@@ -606,6 +612,10 @@
                     const y = (0.5 - palmY / outputCanvas.height) * 10;
                     
                     currentModel.position.set(x, y, 0);
+                    
+                    // Calculate scale based on hand size (distance from camera)
+                    const scale = calculateModelScale(handSize);
+                    currentModel.scale.set(scale, scale, scale);
                     
                     // Add some rotation based on hand orientation
                     const indexBase = landmarks[5];
@@ -618,16 +628,64 @@
                     currentModel.rotation.z = -handOrientation;
                 }
                 
-                statusElement.textContent = 'Hand detected! Model is on your palm.';
+                statusElement.textContent = `Hand detected! Model is on your palm. Move hand closer/farther to scale.`;
                 palmIndicator.classList.remove('visible');
             } else {
                 handDetected = false;
+                handSizeHistory = [];
                 if (currentModel) {
                     currentModel.visible = false;
                 }
                 statusElement.textContent = 'Show your palm to the camera.';
                 palmIndicator.classList.add('visible');
             }
+        }
+        
+        function calculateHandSize(landmarks) {
+            // Calculate hand size based on distance between wrist and middle finger tip
+            const wrist = landmarks[0];
+            const middleTip = landmarks[12];
+            
+            // Euclidean distance in normalized coordinates
+            const distance = Math.sqrt(
+                Math.pow(wrist.x - middleTip.x, 2) + 
+                Math.pow(wrist.y - middleTip.y, 2)
+            );
+            
+            // Add to history for smoothing
+            handSizeHistory.push(distance);
+            if (handSizeHistory.length > MAX_HISTORY) {
+                handSizeHistory.shift();
+            }
+            
+            // Return average of recent measurements for stability
+            return handSizeHistory.reduce((a, b) => a + b, 0) / handSizeHistory.length;
+        }
+        
+        function calculateModelScale(handSize) {
+            // Map hand size to model scale
+            // When hand is closer (larger handSize), scale should be larger
+            // When hand is farther (smaller handSize), scale should be smaller
+            
+            // Define min and max hand sizes (these might need adjustment based on testing)
+            const minHandSize = 0.1;  // Hand far from camera
+            const maxHandSize = 0.3;  // Hand close to camera
+            
+            // Define min and max scale
+            const minScale = 0.5;     // Smallest model size
+            const maxScale = 2.0;     // Largest model size
+            
+            // Clamp hand size to our expected range
+            const clampedHandSize = Math.max(minHandSize, Math.min(maxHandSize, handSize));
+            
+            // Normalize to 0-1 range
+            const normalized = (clampedHandSize - minHandSize) / (maxHandSize - minHandSize);
+            
+            // Apply exponential curve for more natural scaling
+            const curved = Math.pow(normalized, 0.7);
+            
+            // Map to scale range
+            return minScale + curved * (maxScale - minScale);
         }
         
         function drawHandLandmarks(landmarks, handedness) {
