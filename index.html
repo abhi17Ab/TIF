@@ -118,6 +118,7 @@
     let handFound = false;
     let isModelLoaded = false;
     let detectionActive = true;
+    let isHandTrackerReady = false;
 
     // Set canvas size to match window
     function setupCanvas() {
@@ -145,10 +146,13 @@
           numHands: 1
         });
         
+        isHandTrackerReady = true;
         info.textContent = "Hand tracking ready. Please allow camera access.";
+        console.log("Hand tracker initialized successfully");
       } catch (error) {
         console.error('Error setting up MediaPipe:', error);
         info.textContent = "Error loading hand tracking. Please refresh.";
+        isHandTrackerReady = false;
       }
     }
 
@@ -227,6 +231,13 @@
       if (!detectionActive) return;
       
       try {
+        // Check if handTracker is ready before using it
+        if (!isHandTrackerReady || !handTracker) {
+          console.log("Hand tracker not ready yet, skipping detection");
+          requestAnimationFrame(() => detectHands(video));
+          return;
+        }
+        
         const res = await handTracker.detectForVideo(video, performance.now());
         
         if (res.landmarks && res.landmarks.length > 0) {
@@ -245,6 +256,7 @@
         }
       } catch (error) {
         console.error('Detection error:', error);
+        // Don't stop detection on error, just continue
       }
       
       if (detectionActive) {
@@ -287,8 +299,13 @@
 
     async function main() {
       try {
-        await setupMediaPipe();
+        // Start MediaPipe setup but don't wait for it to complete before starting camera
+        const mediaPipePromise = setupMediaPipe();
         const video = await startCamera();
+        
+        // Now wait for MediaPipe to complete
+        await mediaPipePromise;
+        
         setupModelViewer();
         setupARButton();
         
@@ -296,12 +313,13 @@
         loading.style.display = 'block';
         arButton.disabled = true;
         
-        // Start hand detection
+        // Start hand detection only after both camera and hand tracker are ready
+        console.log("Starting hand detection");
         detectHands(video);
         
       } catch (error) {
         console.error('Main initialization failed:', error);
-        info.textContent = "Failed to initialize application.";
+        info.textContent = "Failed to initialize application: " + error.message;
       }
     }
 
