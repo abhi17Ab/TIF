@@ -572,13 +572,28 @@
                     drawHandLandmarks(landmarks, handedness);
                 }
                 
-                // Calculate palm center
-                const wrist = landmarks[0]; // Wrist landmark
+                // Calculate position on the UPPER side of the palm
+                // We'll use the middle finger MCP (9) as base and move towards the fingers
                 const middleBase = landmarks[9]; // Middle finger MCP joint
+                const middleTip = landmarks[12]; // Middle finger tip
                 
-                // Calculate palm center in canvas coordinates
-                const palmX = (wrist.x + middleBase.x) / 2 * outputCanvas.width;
-                const palmY = (wrist.y + middleBase.y) / 2 * outputCanvas.height;
+                // Calculate direction from base to tip
+                const directionX = middleTip.x - middleBase.x;
+                const directionY = middleTip.y - middleBase.y;
+                
+                // Normalize the direction vector
+                const length = Math.sqrt(directionX * directionX + directionY * directionY);
+                const normalizedX = directionX / length;
+                const normalizedY = directionY / length;
+                
+                // Position the model on the upper palm (closer to fingers)
+                // Start from middle base and move 70% toward the tip
+                const modelX = middleBase.x + normalizedX * 0.7;
+                const modelY = middleBase.y + normalizedY * 0.7;
+                
+                // Convert to canvas coordinates
+                const palmX = modelX * outputCanvas.width;
+                const palmY = modelY * outputCanvas.height;
                 
                 lastPalmPosition = { x: palmX, y: palmY };
                 
