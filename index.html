@@ -64,32 +64,10 @@
             background: rgba(0, 0, 0, 0.2);
         }
         
-        #ar-view {
+        #output-canvas {
             width: 100%;
             height: 100%;
             display: block;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-        
-        #video-element {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1); /* Mirror the video */
-        }
-        
-        #canvas-element {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
         }
         
         .controls {
@@ -249,6 +227,16 @@
             margin-top: 20px;
         }
         
+        .model-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+        
         @media (max-width: 768px) {
             .ar-container {
                 height: 400px;
@@ -278,9 +266,8 @@
         
         <div class="content">
             <div class="ar-container">
-                <canvas id="ar-view"></canvas>
-                <video id="video-element" playsinline></video>
-                <canvas id="canvas-element"></canvas>
+                <canvas id="output-canvas" width="1280" height="720"></canvas>
+                <canvas id="model-canvas" class="model-canvas"></canvas>
                 <div class="palm-indicator" id="palm-indicator"></div>
             </div>
             
@@ -334,13 +321,15 @@
         let scene, camera, renderer;
         let currentModel = null;
         let hands = null;
-        let videoElement, canvasElement, canvasCtx;
+        let videoElement;
+        let outputCanvas, outputCtx;
+        let modelCanvas, modelCtx;
         let isTracking = false;
         let showLandmarks = true;
         
         // Hand tracking variables
-        let palmPosition = new THREE.Vector3(0, 0, 0);
         let handDetected = false;
+        let lastPalmPosition = { x: 0, y: 0 };
         
         // DOM elements
         const startButton = document.getElementById('start-button');
@@ -357,6 +346,7 @@
         
         function init() {
             desktopMessage.style.display = 'block';
+            setupCanvases();
             setupThreeJS();
             
             // Add event listeners
@@ -380,32 +370,34 @@
                     showLandmarks = option.dataset.option === 'show-landmarks';
                 });
             });
+        }
+        
+        function setupCanvases() {
+            // Setup output canvas for video and hand landmarks
+            outputCanvas = document.getElementById('output-canvas');
+            outputCtx = outputCanvas.getContext('2d');
             
-            // Start animation loop
-            renderer.setAnimationLoop(render);
+            // Setup model canvas for 3D rendering
+            modelCanvas = document.getElementById('model-canvas');
+            modelCanvas.width = outputCanvas.width;
+            modelCanvas.height = outputCanvas.height;
+            modelCtx = modelCanvas.getContext('2d');
         }
         
         function setupThreeJS() {
             // Set up Three.js scene
             scene = new THREE.Scene();
-            scene.background = null; // Transparent background
             
-            // Set up camera - position it to match the perspective
-            camera = new THREE.PerspectiveCamera(60, 
-                document.querySelector('.ar-container').clientWidth / 
-                document.querySelector('.ar-container').clientHeight, 
-                0.1, 1000);
-            camera.position.set(0, 0, 5);
+            // Set up camera
+            camera = new THREE.PerspectiveCamera(75, modelCanvas.width / modelCanvas.height, 0.1, 1000);
+            camera.position.z = 5;
             
-            // Set up renderer with transparency
+            // Set up renderer
             renderer = new THREE.WebGLRenderer({ 
-                canvas: document.getElementById('ar-view'),
                 antialias: true,
                 alpha: true
             });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(document.querySelector('.ar-container').clientWidth, 
-                            document.querySelector('.ar-container').clientHeight);
+            renderer.setSize(modelCanvas.width, modelCanvas.height);
             renderer.setClearColor(0x000000, 0); // Transparent background
             
             // Add lighting
@@ -416,17 +408,11 @@
             directionalLight.position.set(5, 10, 7);
             scene.add(directionalLight);
             
-            // Get video and canvas elements
-            videoElement = document.getElementById('video-element');
-            canvasElement = document.getElementById('canvas-element');
-            canvasCtx = canvasElement.getContext('2d');
-            
-            // Set canvas size
-            canvasElement.width = document.querySelector('.ar-container').clientWidth;
-            canvasElement.height = document.querySelector('.ar-container').clientHeight;
-            
             // Load initial model
             loadModel('cube');
+            
+            // Start animation loop
+            animate();
         }
         
         function loadModel(modelType) {
@@ -439,53 +425,45 @@
             
             switch(modelType) {
                 case 'cube':
-                    geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                    geometry = new THREE.BoxGeometry(1, 1, 1);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4cc9f0,
                         metalness: 0.7,
-                        roughness: 0.2,
-                        transparent: true,
-                        opacity: 0.9
+                        roughness: 0.2
                     });
                     break;
                     
                 case 'sphere':
-                    geometry = new THREE.SphereGeometry(0.25, 32, 32);
+                    geometry = new THREE.SphereGeometry(0.5, 32, 32);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0xf72585,
                         metalness: 0.5,
-                        roughness: 0.3,
-                        transparent: true,
-                        opacity: 0.9
+                        roughness: 0.3
                     });
                     break;
                     
                 case 'torus':
-                    geometry = new THREE.TorusGeometry(0.25, 0.1, 16, 100);
+                    geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 100);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4361ee,
                         metalness: 0.6,
-                        roughness: 0.2,
-                        transparent: true,
-                        opacity: 0.9
+                        roughness: 0.2
                     });
                     break;
                     
                 case 'teapot':
                     // Using a cone as a teapot placeholder
-                    geometry = new THREE.ConeGeometry(0.2, 0.5, 32);
+                    geometry = new THREE.ConeGeometry(0.4, 1, 32);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4ade80,
                         metalness: 0.4,
-                        roughness: 0.4,
-                        transparent: true,
-                        opacity: 0.9
+                        roughness: 0.4
                     });
                     break;
             }
             
             currentModel = new THREE.Mesh(geometry, material);
-            currentModel.visible = true; // Hide until hand is detected
+            currentModel.visible = false;
             
             scene.add(currentModel);
             statusElement.textContent = `Loaded ${modelType} model. ${isTracking ? 'Show your palm to place it.' : 'Start hand tracking to begin.'}`;
@@ -500,6 +478,15 @@
         }
         
         function startHandTracking() {
+            // Create video element if it doesn't exist
+            if (!videoElement) {
+                videoElement = document.createElement('video');
+                videoElement.setAttribute('playsinline', '');
+                videoElement.setAttribute('autoplay', '');
+                videoElement.style.display = 'none';
+                document.body.appendChild(videoElement);
+            }
+            
             // Initialize MediaPipe Hands
             hands = new Hands({
                 locateFile: (file) => {
@@ -523,8 +510,8 @@
                         await hands.send({image: videoElement});
                     }
                 },
-                width: 640,
-                height: 480
+                width: 1280,
+                height: 720
             });
             
             camera.start().then(() => {
@@ -545,7 +532,7 @@
                 hands = null;
             }
             
-            if (videoElement.srcObject) {
+            if (videoElement && videoElement.srcObject) {
                 videoElement.srcObject.getTracks().forEach(track => track.stop());
                 videoElement.srcObject = null;
             }
@@ -557,7 +544,8 @@
             palmIndicator.classList.remove('visible');
             
             // Clear canvas
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+            modelCtx.clearRect(0, 0, modelCanvas.width, modelCanvas.height);
             
             // Hide model
             if (currentModel) {
@@ -566,62 +554,53 @@
         }
         
         function onHandResults(results) {
-            // Clear canvas
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            
-            // Draw video feed (mirrored)
-            canvasCtx.save();
-            canvasCtx.scale(-1, 1);
-            canvasCtx.translate(-canvasElement.width, 0);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.restore();
+            // Draw video feed to output canvas
+            outputCtx.save();
+            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+            outputCtx.drawImage(results.image, 0, 0, outputCanvas.width, outputCanvas.height);
+            outputCtx.restore();
             
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 handDetected = true;
                 
                 // Get the first hand
                 const landmarks = results.multiHandLandmarks[0];
+                const handedness = results.multiHandedness[0];
                 
                 // Draw hand landmarks if enabled
                 if (showLandmarks) {
-                    drawHandLandmarks(landmarks, results.multiHandedness[0]);
+                    drawHandLandmarks(landmarks, handedness);
                 }
                 
-                // Calculate palm center (using wrist and middle finger base)
+                // Calculate palm center
                 const wrist = landmarks[0]; // Wrist landmark
                 const middleBase = landmarks[9]; // Middle finger MCP joint
                 
-                // Calculate palm center in normalized coordinates (0-1)
-                const palmX = (wrist.x + middleBase.x) / 2;
-                const palmY = (wrist.y + middleBase.y) / 2;
+                // Calculate palm center in canvas coordinates
+                const palmX = (wrist.x + middleBase.x) / 2 * outputCanvas.width;
+                const palmY = (wrist.y + middleBase.y) / 2 * outputCanvas.height;
                 
-                // Convert to 3D coordinates for Three.js
-                // Map from video coordinates (0-1) to Three.js world coordinates
-                // Flip X coordinate because camera is mirrored
-                const x = (0.5 - palmX) * 8; // Scale for 3D space
-                const y = (palmY - 0.5) * 8; // Invert Y axis
-                const z = -2; // Fixed depth in front of camera
-                
-                palmPosition.set(x, y, z);
+                lastPalmPosition = { x: palmX, y: palmY };
                 
                 // Update model position and visibility
                 if (currentModel) {
-                    currentModel.position.copy(palmPosition);
                     currentModel.visible = true;
                     
-                    // Add slight rotation based on hand orientation
-                    const indexBase = landmarks[5]; // Index finger base
-                    const pinkyBase = landmarks[17]; // Pinky finger base
+                    // Position the model in 3D space based on palm position
+                    const x = (palmX / outputCanvas.width - 0.5) * 10;
+                    const y = (0.5 - palmY / outputCanvas.height) * 10;
                     
+                    currentModel.position.set(x, y, 0);
+                    
+                    // Add some rotation based on hand orientation
+                    const indexBase = landmarks[5];
+                    const pinkyBase = landmarks[17];
                     const handOrientation = Math.atan2(
                         indexBase.y - pinkyBase.y,
                         indexBase.x - pinkyBase.x
                     );
                     
                     currentModel.rotation.z = -handOrientation;
-                    
-                    // Add some floating animation
-                    currentModel.position.y += Math.sin(Date.now() * 0.003) * 0.1;
                 }
                 
                 statusElement.textContent = 'Hand detected! Model is on your palm.';
@@ -637,24 +616,22 @@
         }
         
         function drawHandLandmarks(landmarks, handedness) {
-            canvasCtx.save();
-            canvasCtx.scale(-1, 1);
-            canvasCtx.translate(-canvasElement.width, 0);
+            outputCtx.save();
             
             // Draw connections
-            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+            drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, {
                 color: handedness.label === 'Left' ? '#00FF00' : '#FF0000',
                 lineWidth: 2
             });
             
             // Draw landmarks
-            drawLandmarks(canvasCtx, landmarks, {
+            drawLandmarks(outputCtx, landmarks, {
                 color: handedness.label === 'Left' ? '#00FF00' : '#FF0000',
                 lineWidth: 1,
                 radius: 3
             });
             
-            canvasCtx.restore();
+            outputCtx.restore();
         }
         
         function resetModel() {
@@ -665,23 +642,36 @@
             }
         }
         
-        function render() {
+        function animate() {
+            requestAnimationFrame(animate);
+            
             if (currentModel && currentModel.visible) {
                 // Rotate the model slowly for visual effect
                 currentModel.rotation.y += 0.01;
+                
+                // Render Three.js scene to model canvas
+                renderer.render(scene, camera);
+                
+                // Clear model canvas and draw the rendered 3D scene
+                modelCtx.clearRect(0, 0, modelCanvas.width, modelCanvas.height);
+                modelCtx.drawImage(renderer.domElement, 0, 0, modelCanvas.width, modelCanvas.height);
+            } else {
+                // Clear model canvas if no model is visible
+                modelCtx.clearRect(0, 0, modelCanvas.width, modelCanvas.height);
             }
-            
-            renderer.render(scene, camera);
         }
         
         // Handle window resize
         window.addEventListener('resize', () => {
             const container = document.querySelector('.ar-container');
-            camera.aspect = container.clientWidth / container.clientHeight;
+            outputCanvas.width = container.clientWidth;
+            outputCanvas.height = container.clientHeight;
+            modelCanvas.width = container.clientWidth;
+            modelCanvas.height = container.clientHeight;
+            
+            camera.aspect = modelCanvas.width / modelCanvas.height;
             camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
-            canvasElement.width = container.clientWidth;
-            canvasElement.height = container.clientHeight;
+            renderer.setSize(modelCanvas.width, modelCanvas.height);
         });
         
         // MediaPipe Hand Connections
