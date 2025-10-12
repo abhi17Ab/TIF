@@ -68,6 +68,9 @@
             width: 100%;
             height: 100%;
             display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
         }
         
         #video-element {
@@ -77,8 +80,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            opacity: 0;
-            pointer-events: none;
+            transform: scaleX(-1); /* Mirror the video */
         }
         
         #canvas-element {
@@ -191,6 +193,7 @@
             pointer-events: none;
             opacity: 0;
             transition: opacity 0.5s ease;
+            z-index: 10;
         }
         
         .palm-indicator.visible {
@@ -385,13 +388,16 @@
         function setupThreeJS() {
             // Set up Three.js scene
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000000);
+            scene.background = null; // Transparent background
             
-            // Set up camera
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            // Set up camera - position it to match the perspective
+            camera = new THREE.PerspectiveCamera(60, 
+                document.querySelector('.ar-container').clientWidth / 
+                document.querySelector('.ar-container').clientHeight, 
+                0.1, 1000);
             camera.position.set(0, 0, 5);
             
-            // Set up renderer
+            // Set up renderer with transparency
             renderer = new THREE.WebGLRenderer({ 
                 canvas: document.getElementById('ar-view'),
                 antialias: true,
@@ -400,12 +406,13 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(document.querySelector('.ar-container').clientWidth, 
                             document.querySelector('.ar-container').clientHeight);
+            renderer.setClearColor(0x000000, 0); // Transparent background
             
             // Add lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
             scene.add(ambientLight);
             
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight.position.set(5, 10, 7);
             scene.add(directionalLight);
             
@@ -432,39 +439,47 @@
             
             switch(modelType) {
                 case 'cube':
-                    geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+                    geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4cc9f0,
                         metalness: 0.7,
-                        roughness: 0.2
+                        roughness: 0.2,
+                        transparent: true,
+                        opacity: 0.9
                     });
                     break;
                     
                 case 'sphere':
-                    geometry = new THREE.SphereGeometry(0.15, 32, 32);
+                    geometry = new THREE.SphereGeometry(0.25, 32, 32);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0xf72585,
                         metalness: 0.5,
-                        roughness: 0.3
+                        roughness: 0.3,
+                        transparent: true,
+                        opacity: 0.9
                     });
                     break;
                     
                 case 'torus':
-                    geometry = new THREE.TorusGeometry(0.15, 0.07, 16, 100);
+                    geometry = new THREE.TorusGeometry(0.25, 0.1, 16, 100);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4361ee,
                         metalness: 0.6,
-                        roughness: 0.2
+                        roughness: 0.2,
+                        transparent: true,
+                        opacity: 0.9
                     });
                     break;
                     
                 case 'teapot':
                     // Using a cone as a teapot placeholder
-                    geometry = new THREE.ConeGeometry(0.12, 0.3, 32);
+                    geometry = new THREE.ConeGeometry(0.2, 0.5, 32);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4ade80,
                         metalness: 0.4,
-                        roughness: 0.4
+                        roughness: 0.4,
+                        transparent: true,
+                        opacity: 0.9
                     });
                     break;
             }
@@ -517,7 +532,6 @@
                 startButton.textContent = 'Stop Hand Tracking';
                 statusElement.textContent = 'Hand tracking started. Show your palm to the camera.';
                 palmIndicator.classList.add('visible');
-                videoElement.style.opacity = '0.3'; // Show video faintly for reference
             }).catch(error => {
                 console.error('Camera start failed:', error);
                 statusElement.textContent = 'Failed to start camera: ' + error.message;
@@ -541,7 +555,6 @@
             startButton.textContent = 'Start Hand Tracking';
             statusElement.textContent = 'Hand tracking stopped.';
             palmIndicator.classList.remove('visible');
-            videoElement.style.opacity = '0';
             
             // Clear canvas
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -556,7 +569,7 @@
             // Clear canvas
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             
-            // Draw video feed
+            // Draw video feed (mirrored)
             canvasCtx.save();
             canvasCtx.scale(-1, 1);
             canvasCtx.translate(-canvasElement.width, 0);
@@ -578,15 +591,16 @@
                 const wrist = landmarks[0]; // Wrist landmark
                 const middleBase = landmarks[9]; // Middle finger MCP joint
                 
-                // Calculate palm center in 2D
+                // Calculate palm center in normalized coordinates (0-1)
                 const palmX = (wrist.x + middleBase.x) / 2;
                 const palmY = (wrist.y + middleBase.y) / 2;
                 
                 // Convert to 3D coordinates for Three.js
+                // Map from video coordinates (0-1) to Three.js world coordinates
                 // Flip X coordinate because camera is mirrored
-                const x = (0.5 - palmX) * 10; // Scale for 3D space
-                const y = (0.5 - palmY) * 10; // Scale for 3D space
-                const z = -5; // Fixed depth
+                const x = (0.5 - palmX) * 8; // Scale for 3D space
+                const y = (palmY - 0.5) * 8; // Invert Y axis
+                const z = -2; // Fixed depth in front of camera
                 
                 palmPosition.set(x, y, z);
                 
@@ -605,6 +619,9 @@
                     );
                     
                     currentModel.rotation.z = -handOrientation;
+                    
+                    // Add some floating animation
+                    currentModel.position.y += Math.sin(Date.now() * 0.003) * 0.1;
                 }
                 
                 statusElement.textContent = 'Hand detected! Model is on your palm.';
@@ -634,7 +651,7 @@
             drawLandmarks(canvasCtx, landmarks, {
                 color: handedness.label === 'Left' ? '#00FF00' : '#FF0000',
                 lineWidth: 1,
-                radius: 2
+                radius: 3
             });
             
             canvasCtx.restore();
@@ -656,6 +673,16 @@
             
             renderer.render(scene, camera);
         }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const container = document.querySelector('.ar-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            canvasElement.width = container.clientWidth;
+            canvasElement.height = container.clientHeight;
+        });
         
         // MediaPipe Hand Connections
         const HAND_CONNECTIONS = [
