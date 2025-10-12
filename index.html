@@ -1,126 +1,205 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tap to AR</title>
-  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+<!-- Add USDZ for iOS Quick Look -->
+<model-viewer
+  id="viewer"
+  src="./Diwali_crackers.glb"
+  ios-src="./Diwali_crackers.usdz"
+  ar
+  ar-modes="webxr scene-viewer quick-look"
+  ar-scale="fixed"
+  camera-controls
+  tone-mapping="neutral"
+  shadow-intensity="1"
+  autoplay
+  exposure="1"
+  shadow-softness="0.5">
+  <button slot="ar-button" id="ar-button" class="ar-button">View in AR</button>
+</model-viewer>
+
+<script type="module">
+  import 'https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js';
+
+  const modelViewer = document.getElementById('viewer');
+  const tapOverlay = document.getElementById('tap-overlay');
+
+  function isMobile() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  }
+
+  // MediaPipe Hand Landmarker (web) lazy loader
+  let landmarker, mpReady = false, videoStream, videoEl;
+
+  async function ensureMediaPipe() {
+    if (mpReady) return;
+    const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js');
+    const fileset = await vision.FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    );
+    landmarker = await vision.HandLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-assets/hand_landmarker.task' },
+      runningMode: 'VIDEO',
+      numHands: 1
+    });
+    mpReady = true;
+  }
+
+  // Start environment camera for hand tracking overlay when AR is WebXR (in-browser)
+  async function startPalmTracking() {
+    try {
+      await ensureMediaPipe();
+      // Reuse camera if already granted by WebXR; otherwise get a parallel stream
+      videoEl = document.createElement('video');
+      videoEl.autoplay = true;
+      videoEl.playsInline = true;
+      videoEl.muted = true;
+      videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      videoEl.srcObject = videoStream;
+      await videoEl.play();
+
+      let lastT = -1;
+      const loop = async () => {
+        if (!mpReady) return;
+        const now = videoEl.currentTime;
+        if (now !== lastT) {
+          const res = await landmarker.detectForVideo(videoEl, now);
+          if (res?.landmarks?.length) {
+            const pts = res.landmarks[0];
+            // Palm center from wrist(0), index base(5), pinky base(17)
+            const px = (pts[0].x + pts[5].x + pts[17].x) / 3;
+            const py = (pts[0].y + pts[5].y + pts[17].y) / 3;
+
+            // Approximate depth: use world landmarks if present
+            // Fallback to a fixed offset from camera; adjust by phone type
+            const world = res.worldLandmarks?.[0];
+            let depthM = 0.5;
+            if (world) {
+              // Negative z is forward in MediaPipe world; clamp sensible range
+              depthM = Math.min(1.0, Math.max(0.2, -world[0].z));
+            }
+
+            // Convert normalized screen coords to a 3D ray and position model along the ray
+            // model-viewer world placement via scene-graph root transform
+            const scene = modelViewer.model?.scene;
+            if (scene && modelViewer.xrSession) {
+              // Get projection and view from model-viewer camera
+              const rect = modelViewer.getBoundingClientRect();
+              const sx = px * rect.width;
+              const sy = py * rect.height;
+
+              // Use model-viewer API to project 2D to 3D via hit-test when available
+              // If hit-test is active, prefer it; otherwise project a point depthM forward
+              let placed = false;
+              try {
+                const hit = await modelViewer.positionAndNormalFromPoint(sx, sy);
+                if (hit) {
+                  const offset = 0.03; // 3 cm above palm plane
+                  const nx = hit.normalX, ny = hit.normalY, nz = hit.normalZ;
+                  const len = Math.hypot(nx, ny, nz) || 1;
+                  scene.position.set(hit.positionX + (nx/len)*offset,
+                                     hit.positionY + (ny/len)*offset,
+                                     hit.positionZ + (nz/len)*offset);
+                  placed = true;
+                }
+              } catch {}
+
+              if (!placed) {
+                // Fallback: place along camera forward at approximate depth
+                const cam = modelViewer.getCameraOrbit();
+                // Use model-viewer’s turntable space: translate relative to camera forward vector is non-trivial
+                // Simpler: keep a stable anchor in front and lerp toward it
+                const target = modelViewer.getCameraTarget();
+                scene.position.set(target.x, target.y, target.z - depthM);
+              }
+            }
+          }
+          lastT = now;
+        }
+        if (modelViewer.xrSession) requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    } catch (e) {
+      // If camera permission denied, gracefully skip palm tracking
     }
-    
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    
-    .tap-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      z-index: 1000;
-      cursor: pointer;
-    }
-    
-    .tap-overlay h1 {
-      font-size: 2.5rem;
-      margin-bottom: 20px;
-      font-weight: 300;
-      letter-spacing: 2px;
-    }
-    
-    .tap-overlay p {
-      font-size: 1.2rem;
-      opacity: 0.9;
-      animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-      0%, 100% { opacity: 0.9; }
-      50% { opacity: 0.5; }
-    }
-    
-    .hidden {
-      display: none;
-    }
-    
-    model-viewer {
-      width: 100%;
-      height: 100%;
-      position: fixed;
-      top: 0;
-      left: 0;
-    }
-    
-    .ar-button {
-      display: none;
-    }
-  </style>
-</head>
-<body>
-  <div id="tap-overlay" class="tap-overlay">
-    <h1>TAP TO VIEW IN AR</h1>
-    <p>Touch anywhere to continue</p>
-  </div>
-  
-  <model-viewer 
-    id="viewer"
-    src="./Diwali_crackers.glb" 
-    ar 
-    ar-modes="webxr scene-viewer quick-look" 
-    camera-controls 
-    tone-mapping="neutral"
-    shadow-intensity="1" 
-    autoplay 
-    exposure="1" 
-    shadow-softness="0.5">
-    
-    <button slot="ar-button" id="ar-button" class="ar-button">View in AR</button>
-  </model-viewer>
-  
-  <script>
-    function isMobile() {
-      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    }
-    
-    window.addEventListener('DOMContentLoaded', () => {
-      const modelViewer = document.getElementById('viewer');
-      const tapOverlay = document.getElementById('tap-overlay');
-      
-      // Wait for model to load
-      modelViewer.addEventListener('load', () => {
-        if (isMobile()) {
-          // On mobile: show tap overlay
-          tapOverlay.addEventListener('click', () => {
-            tapOverlay.classList.add('hidden');
-            // Activate AR immediately after user tap
-            modelViewer.activateAR();
-          });
-        } else {
-          // On desktop: hide overlay and go fullscreen
-          tapOverlay.classList.add('hidden');
-          const elem = document.documentElement;
-          if (elem.requestFullscreen) {
-            elem.requestFullscreen().catch(err => {
-              console.log('Fullscreen request failed:', err);
-            });
+  }
+
+  // Prefer native app viewers on mobile if WebXR hands aren’t supported
+  function prefersNativeAR() {
+    // iOS Safari always uses Quick Look when ios-src present; Android Chrome uses WebXR first, otherwise Scene Viewer
+    return false;
+  }
+
+  // WebXR Hand Input (when available on some Android devices)
+  function setupWebXRHands(session) {
+    session.requestReferenceSpace('local').then((refSpace) => {
+      const onFrame = (t, frame) => {
+        const inputs = session.inputSources || [];
+        const handInput = inputs.find(i => i.hand && i.handedness === 'right') || inputs.find(i => i.hand);
+        if (handInput?.hand) {
+          // Simple palm position from joints if exposed
+          const wrist = handInput.hand.get('wrist');
+          const indexMeta = handInput.hand.get('index-finger-metacarpal');
+          const pinkyMeta = handInput.hand.get('pinky-finger-metacarpal');
+          if (wrist && indexMeta && pinkyMeta) {
+            const wp = frame.getJointPose(wrist, refSpace);
+            const ip = frame.getJointPose(indexMeta, refSpace);
+            const pp = frame.getJointPose(pinkyMeta, refSpace);
+            if (wp && ip && pp) {
+              const cx = (wp.transform.position.x + ip.transform.position.x + pp.transform.position.x)/3;
+              const cy = (wp.transform.position.y + ip.transform.position.y + pp.transform.position.y)/3;
+              const cz = (wp.transform.position.z + ip.transform.position.z + pp.transform.position.z)/3;
+
+              const scene = modelViewer.model?.scene;
+              if (scene) {
+                scene.position.set(cx, cy + 0.03, cz);
+              }
+            }
           }
         }
-      });
+        session.requestAnimationFrame(onFrame);
+      };
+      session.requestAnimationFrame(onFrame);
     });
-  </script>
-</body>
-</html>
+  }
+
+  // Wire AR lifecycle
+  modelViewer.addEventListener('ar-status', (e) => {
+    if (e.detail.status === 'session-started') {
+      const session = modelViewer.xrSession;
+      if (session) {
+        // If WebXR hands are present, use them; otherwise start MediaPipe fallback
+        const hasHands = (session.inputSources || []).some(s => s.hand);
+        if (hasHands) {
+          setupWebXRHands(session);
+        } else {
+          startPalmTracking();
+        }
+      }
+    }
+    if (e.detail.status === 'not-presenting' || e.detail.status === 'failed') {
+      // Cleanup
+      if (videoStream) {
+        videoStream.getTracks().forEach(t => t.stop());
+        videoStream = null;
+      }
+    }
+  });
+
+  // Original overlay behavior preserved
+  window.addEventListener('DOMContentLoaded', () => {
+    modelViewer.addEventListener('load', () => {
+      if (isMobile()) {
+        tapOverlay.addEventListener('click', async () => {
+          tapOverlay.classList.add('hidden');
+          try {
+            await modelViewer.activateAR();
+          } catch {
+            // If AR cannot start in-browser, rely on platform viewers
+            // model-viewer automatically falls back to Scene Viewer/Quick Look
+          }
+        });
+      } else {
+        tapOverlay.classList.add('hidden');
+        document.documentElement.requestFullscreen?.().catch(()=>{});
+      }
+    });
+  });
+</script>
