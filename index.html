@@ -77,6 +77,13 @@
       color: white;
       z-index: 3;
     }
+    .error {
+      color: #ff6b6b;
+      background: rgba(255,0,0,0.1);
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px;
+    }
   </style>
 </head>
 <body>
@@ -103,6 +110,7 @@
   
   <button id="ar-button">View in AR</button>
   <div id="loading" class="loading" style="display: none;">Loading 3D model...</div>
+  <div id="error-message" style="display: none;" class="error"></div>
 
   <script type="module">
     // MediaPipe Hand Tracking
@@ -112,6 +120,7 @@
     const overlay = document.getElementById('overlay');
     const arButton = document.getElementById('ar-button');
     const loading = document.getElementById('loading');
+    const errorMessage = document.getElementById('error-message');
     const ctx = overlay.getContext('2d');
     
     let camW = 640, camH = 480;
@@ -126,10 +135,43 @@
       overlay.height = window.innerHeight;
     }
 
+    function showError(message) {
+      errorMessage.textContent = message;
+      errorMessage.style.display = 'block';
+      info.textContent = "Error: " + message;
+      console.error(message);
+    }
+
     async function setupMediaPipe() {
       try {
         info.textContent = "Loading hand tracking model...";
-        const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js');
+        
+        // Try multiple CDN URLs for MediaPipe
+        const cdnUrls = [
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js',
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm/vision_bundle.js',
+          'https://unpkg.com/@mediapipe/tasks-vision@0.10.14/vision_bundle.js'
+        ];
+        
+        let vision;
+        let lastError;
+        
+        for (const url of cdnUrls) {
+          try {
+            console.log("Trying to load MediaPipe from:", url);
+            vision = await import(url);
+            console.log("Successfully loaded MediaPipe from:", url);
+            break;
+          } catch (err) {
+            lastError = err;
+            console.warn("Failed to load from", url, err);
+          }
+        }
+        
+        if (!vision) {
+          throw new Error(`All CDN attempts failed. Last error: ${lastError?.message}`);
+        }
+        
         HandLandmarker = vision.HandLandmarker;
         FilesetResolver = vision.FilesetResolver;
         
@@ -150,9 +192,15 @@
         info.textContent = "Hand tracking ready. Please allow camera access.";
         console.log("Hand tracker initialized successfully");
       } catch (error) {
-        console.error('Error setting up MediaPipe:', error);
-        info.textContent = "Error loading hand tracking. Please refresh.";
+        const errorMsg = `Error setting up MediaPipe: ${error.message}. The hand tracking feature will not work.`;
+        showError(errorMsg);
         isHandTrackerReady = false;
+        
+        // Fallback: Show AR button without hand tracking
+        info.textContent = "Hand tracking unavailable. You can still use AR.";
+        viewer.style.display = 'block';
+        arButton.style.display = 'block';
+        arButton.disabled = false;
       }
     }
 
@@ -182,8 +230,9 @@
         });
       } catch (error) {
         console.error('Error accessing camera:', error);
-        info.textContent = "Cannot access camera. Please check permissions.";
-        throw error;
+        showError(`Cannot access camera: ${error.message}`);
+        // Don't throw error, continue without camera
+        return null;
       }
     }
 
@@ -228,12 +277,17 @@
     }
 
     async function detectHands(video) {
-      if (!detectionActive) return;
+      if (!detectionActive || !video) return;
       
       try {
         // Check if handTracker is ready before using it
         if (!isHandTrackerReady || !handTracker) {
-          console.log("Hand tracker not ready yet, skipping detection");
+          // If hand tracking failed, just show AR button without hand detection
+          if (!isHandTrackerReady) {
+            viewer.style.display = 'block';
+            arButton.style.display = 'block';
+            return;
+          }
           requestAnimationFrame(() => detectHands(video));
           return;
         }
@@ -275,7 +329,7 @@
 
       viewer.addEventListener('error', () => {
         loading.style.display = 'none';
-        info.textContent = "Error loading 3D model. Check file paths.";
+        showError("Error loading 3D model. Check if Diwali_crackers.glb and Diwali_crackers.usdz exist.");
         arButton.disabled = true;
       });
     }
@@ -283,13 +337,16 @@
     // AR button handler
     function setupARButton() {
       arButton.addEventListener('click', async () => {
-        if (!handFound || !isModelLoaded) return;
+        if (!isModelLoaded) {
+          showError("3D model is still loading. Please wait.");
+          return;
+        }
         
         try {
           await viewer.activateAR();
         } catch (error) {
           console.error('AR activation failed:', error);
-          info.textContent = "AR not available on this device.";
+          showError("AR not available on this device: " + error.message);
         }
       });
     }
@@ -299,13 +356,6 @@
 
     async function main() {
       try {
-        // Start MediaPipe setup but don't wait for it to complete before starting camera
-        const mediaPipePromise = setupMediaPipe();
-        const video = await startCamera();
-        
-        // Now wait for MediaPipe to complete
-        await mediaPipePromise;
-        
         setupModelViewer();
         setupARButton();
         
@@ -313,13 +363,24 @@
         loading.style.display = 'block';
         arButton.disabled = true;
         
-        // Start hand detection only after both camera and hand tracker are ready
-        console.log("Starting hand detection");
-        detectHands(video);
+        // Start MediaPipe setup and camera in parallel
+        const mediaPipePromise = setupMediaPipe();
+        const video = await startCamera();
+        
+        // Start hand detection if we have video
+        if (video) {
+          console.log("Starting hand detection");
+          detectHands(video);
+        } else {
+          // If no camera, still show AR button
+          viewer.style.display = 'block';
+          arButton.style.display = 'block';
+          info.textContent = "Camera not available, but you can still use AR.";
+        }
         
       } catch (error) {
         console.error('Main initialization failed:', error);
-        info.textContent = "Failed to initialize application: " + error.message;
+        showError("Failed to initialize application: " + error.message);
       }
     }
 
