@@ -1,406 +1,128 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Hand Tracking AR Preview</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <!-- Google Model Viewer -->
-  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+  <title>Palm AR Preview with three.js and WebXR</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { 
-      margin:0; 
-      background:#181818; 
-      font-family: 'Segoe UI',sans-serif; 
-      overflow: hidden;
-    }
-    #handinfo {
-      position: absolute; 
-      top: 10px; 
-      left: 10px; 
-      z-index: 2;
-      color: #fff; 
-      background:rgba(30,30,66,0.85); 
-      padding:12px; 
-      border-radius:8px;
-      font-size: 1rem;
-    }
-    #input-video { 
-      width:0; 
-      height:0; 
-      position:absolute; 
-    }
-    canvas.overlay {
-      position: fixed; 
-      left:0; 
-      top:0; 
-      z-index:2; 
-      pointer-events: none;
-      width: 100vw; 
-      height: 100vh;
-    }
-    #viewer {
-      width: 100vw; 
-      height: 100vh;
-      display: none;
-      position: fixed; 
-      top:0; 
-      left:0; 
-      z-index:1;
-      background: #181818;
-    }
-    #ar-button {
-      position: absolute; 
-      bottom:40px; 
-      left: 50%; 
-      transform: translateX(-50%);
-      display: none;
-      z-index:8;
-      font-size: 1.2rem;
-      padding: 16px 32px;
-      background: linear-gradient(135deg,#667eea,#764ba2); 
-      border:none;
-      color:#fff; 
-      border-radius:8px; 
-      cursor:pointer; 
-      box-shadow:0 2px 18px 0 rgba(0,0,0,0.35);
-      transition: opacity 0.3s ease;
-    }
-    #ar-button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-    .loading {
+    body { margin: 0; overflow: hidden; }
+    #start-ar {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
+      top: 20px;
+      left: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #0063b1;
       color: white;
-      z-index: 3;
-    }
-    .error {
-      color: #ff6b6b;
-      background: rgba(255,0,0,0.1);
-      padding: 10px;
+      border: none;
       border-radius: 5px;
-      margin: 10px;
+      cursor: pointer;
+      z-index: 1;
     }
   </style>
 </head>
 <body>
-  <div id="handinfo">Initializing hand tracking...</div>
-  <canvas class="overlay" id="overlay"></canvas>
-  <video id="input-video" autoplay muted playsinline></video>
-  
-  <model-viewer
-    id="viewer"
-    src="./Diwali_crackers.glb"
-    ios-src="./Diwali_crackers.usdz"
-    ar
-    ar-modes="webxr scene-viewer quick-look"
-    ar-placement="floor"
-    ar-scale="fixed"
-    camera-controls
-    tone-mapping="neutral"
-    shadow-intensity="1"
-    autoplay
-    exposure="1"
-    shadow-softness="0.5"
-    style="display:none;"
-  ></model-viewer>
-  
-  <button id="ar-button">View in AR</button>
-  <div id="loading" class="loading" style="display: none;">Loading 3D model...</div>
-  <div id="error-message" style="display: none;" class="error"></div>
+  <button id="start-ar">Start AR</button>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/loaders/GLTFLoader.js"></script>
 
-  <script type="module">
-    // MediaPipe Hand Tracking
-    let HandLandmarker, FilesetResolver, handTracker;
-    const info = document.getElementById('handinfo');
-    const viewer = document.getElementById('viewer');
-    const overlay = document.getElementById('overlay');
-    const arButton = document.getElementById('ar-button');
-    const loading = document.getElementById('loading');
-    const errorMessage = document.getElementById('error-message');
-    const ctx = overlay.getContext('2d');
-    
-    let camW = 640, camH = 480;
-    let handFound = false;
-    let isModelLoaded = false;
-    let detectionActive = true;
-    let isHandTrackerReady = false;
+  <script>
+    let camera, scene, renderer;
+    let model;
+    let controller;
+    let xrSession;
 
-    // Set canvas size to match window
-    function setupCanvas() {
-      overlay.width = window.innerWidth;
-      overlay.height = window.innerHeight;
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+      scene.add(light);
+
+      controller = renderer.xr.getControllerGrip(0);
+      scene.add(controller);
+
+      const loader = new THREE.GLTFLoader();
+      loader.load('https://threejs.org/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf', function (gltf) {
+        model = gltf.scene;
+        model.scale.set(0.1, 0.1, 0.1);
+        model.visible = false;
+        scene.add(model);
+      });
     }
 
-    function showError(message) {
-      errorMessage.textContent = message;
-      errorMessage.style.display = 'block';
-      info.textContent = "Error: " + message;
-      console.error(message);
-    }
+    function animate(timestamp, frame) {
+      if (frame && model) {
+        const session = renderer.xr.getSession();
+        if (!session) return;
 
-    async function setupMediaPipe() {
-      try {
-        info.textContent = "Loading hand tracking model...";
-        
-        // Try multiple CDN URLs for MediaPipe
-        const cdnUrls = [
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js',
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm/vision_bundle.js',
-          'https://unpkg.com/@mediapipe/tasks-vision@0.10.14/vision_bundle.js'
-        ];
-        
-        let vision;
-        let lastError;
-        
-        for (const url of cdnUrls) {
-          try {
-            console.log("Trying to load MediaPipe from:", url);
-            vision = await import(url);
-            console.log("Successfully loaded MediaPipe from:", url);
-            break;
-          } catch (err) {
-            lastError = err;
-            console.warn("Failed to load from", url, err);
+        const inputSources = session.inputSources;
+        if (inputSources.length > 0) {
+          const handInput = inputSources[0].hand;
+          if (handInput) {
+            // Get the wrist joint as palm position
+            const wristJoint = handInput.get('wrist');
+            if (wristJoint) {
+              const refSpace = renderer.xr.getReferenceSpace();
+              const wristPose = frame.getJointPose(wristJoint, refSpace);
+              if (wristPose) {
+                model.visible = true;
+                model.position.set(wristPose.transform.position.x, wristPose.transform.position.y, wristPose.transform.position.z);
+                model.quaternion.set(wristPose.transform.orientation.x, wristPose.transform.orientation.y, wristPose.transform.orientation.z, wristPose.transform.orientation.w);
+              } else {
+                model.visible = false;
+              }
+            } else {
+              model.visible = false;
+            }
+          } else {
+            model.visible = false;
           }
         }
-        
-        if (!vision) {
-          throw new Error(`All CDN attempts failed. Last error: ${lastError?.message}`);
-        }
-        
-        HandLandmarker = vision.HandLandmarker;
-        FilesetResolver = vision.FilesetResolver;
-        
-        const fileset = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
-        );
-        
-        handTracker = await HandLandmarker.createFromOptions(fileset, {
-          baseOptions: { 
-            modelAssetPath: 'https://storage.googleapis.com/mediapipe-assets/hand_landmarker.task',
-            delegate: 'GPU'
-          },
-          runningMode: 'VIDEO',
-          numHands: 1
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    function startAR() {
+      if (navigator.xr) {
+        navigator.xr.requestSession('immersive-ar', {
+          optionalFeatures: ['hand-tracking', 'dom-overlay'],
+          domOverlay: { root: document.body }
+        }).then(session => {
+          xrSession = session;
+          renderer.xr.setSession(session);
+          document.getElementById('start-ar').style.display = 'none';
+          session.requestReferenceSpace('local').then((refSpace) => {
+            renderer.setAnimationLoop((timestamp, frame) => {
+              animate(timestamp, frame);
+            });
+          });
+        }).catch(err => {
+          alert('Failed to start AR session: ' + err);
         });
-        
-        isHandTrackerReady = true;
-        info.textContent = "Hand tracking ready. Please allow camera access.";
-        console.log("Hand tracker initialized successfully");
-      } catch (error) {
-        const errorMsg = `Error setting up MediaPipe: ${error.message}. The hand tracking feature will not work.`;
-        showError(errorMsg);
-        isHandTrackerReady = false;
-        
-        // Fallback: Show AR button without hand tracking
-        info.textContent = "Hand tracking unavailable. You can still use AR.";
-        viewer.style.display = 'block';
-        arButton.style.display = 'block';
-        arButton.disabled = false;
+      } else {
+        alert('WebXR not supported on this browser/device.');
       }
     }
 
-    async function startCamera() {
-      try {
-        const video = document.getElementById('input-video');
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: 'environment', 
-            width: { ideal: camW }, 
-            height: { ideal: camH } 
-          }, 
-          audio: false 
-        });
-        
-        video.srcObject = stream;
-        
-        return new Promise((resolve) => {
-          video.onloadedmetadata = () => {
-            video.play();
-            camW = video.videoWidth;
-            camH = video.videoHeight;
-            setupCanvas();
-            info.textContent = "Camera ready. Show your hand to the camera.";
-            resolve(video);
-          };
-        });
-      } catch (error) {
-        console.error('Error accessing camera:', error);
-        showError(`Cannot access camera: ${error.message}`);
-        // Don't throw error, continue without camera
-        return null;
+    document.getElementById('start-ar').addEventListener('click', () => {
+      init();
+      startAR();
+    });
+
+    window.addEventListener('resize', () => {
+      if (renderer && camera) {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
       }
-    }
-
-    function drawPalm(pts) {
-      ctx.clearRect(0, 0, overlay.width, overlay.height);
-      if (!pts || pts.length < 21) return;
-      
-      // Scale coordinates from camera space to screen space
-      const scaleX = overlay.width / camW;
-      const scaleY = overlay.height / camH;
-      
-      ctx.fillStyle = "rgba(52,255,114,0.92)";
-      pts.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x * camW * scaleX, p.y * camH * scaleY, 6, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      
-      // Calculate palm center
-      let px = (pts[0].x + pts[5].x + pts[17].x)/3;
-      let py = (pts[0].y + pts[5].y + pts[17].y)/3;
-      
-      ctx.beginPath();
-      ctx.arc(px * camW * scaleX, py * camH * scaleY, 10, 0, Math.PI*2);
-      ctx.fillStyle = "rgba(255,222,55,0.96)";
-      ctx.fill();
-    }
-
-    function showARViewer() {
-      if (!handFound) return;
-      
-      viewer.style.display = 'block';
-      arButton.style.display = 'block';
-      info.textContent = "Hand detected! Tap 'View in AR' to experience.";
-    }
-
-    function hideARViewer() {
-      viewer.style.display = 'none';
-      arButton.style.display = 'none';
-      ctx.clearRect(0, 0, overlay.width, overlay.height);
-      info.textContent = "Show your hand to the camera.";
-    }
-
-    async function detectHands(video) {
-      if (!detectionActive || !video) return;
-      
-      try {
-        // Check if handTracker is ready before using it
-        if (!isHandTrackerReady || !handTracker) {
-          // If hand tracking failed, just show AR button without hand detection
-          if (!isHandTrackerReady) {
-            viewer.style.display = 'block';
-            arButton.style.display = 'block';
-            return;
-          }
-          requestAnimationFrame(() => detectHands(video));
-          return;
-        }
-        
-        const res = await handTracker.detectForVideo(video, performance.now());
-        
-        if (res.landmarks && res.landmarks.length > 0) {
-          const pts = res.landmarks[0];
-          drawPalm(pts);
-          
-          if (!handFound) {
-            handFound = true;
-            showARViewer();
-          }
-        } else {
-          if (handFound) {
-            handFound = false;
-            hideARViewer();
-          }
-        }
-      } catch (error) {
-        console.error('Detection error:', error);
-        // Don't stop detection on error, just continue
-      }
-      
-      if (detectionActive) {
-        requestAnimationFrame(() => detectHands(video));
-      }
-    }
-
-    // Model viewer event listeners
-    function setupModelViewer() {
-      viewer.addEventListener('load', () => {
-        isModelLoaded = true;
-        loading.style.display = 'none';
-        arButton.disabled = false;
-        console.log('3D model loaded successfully');
-      });
-
-      viewer.addEventListener('error', () => {
-        loading.style.display = 'none';
-        showError("Error loading 3D model. Check if Diwali_crackers.glb and Diwali_crackers.usdz exist.");
-        arButton.disabled = true;
-      });
-    }
-
-    // AR button handler
-    function setupARButton() {
-      arButton.addEventListener('click', async () => {
-        if (!isModelLoaded) {
-          showError("3D model is still loading. Please wait.");
-          return;
-        }
-        
-        try {
-          await viewer.activateAR();
-        } catch (error) {
-          console.error('AR activation failed:', error);
-          showError("AR not available on this device: " + error.message);
-        }
-      });
-    }
-
-    // Handle window resize
-    window.addEventListener('resize', setupCanvas);
-
-    async function main() {
-      try {
-        setupModelViewer();
-        setupARButton();
-        
-        // Show loading for 3D model
-        loading.style.display = 'block';
-        arButton.disabled = true;
-        
-        // Start MediaPipe setup and camera in parallel
-        const mediaPipePromise = setupMediaPipe();
-        const video = await startCamera();
-        
-        // Start hand detection if we have video
-        if (video) {
-          console.log("Starting hand detection");
-          detectHands(video);
-        } else {
-          // If no camera, still show AR button
-          viewer.style.display = 'block';
-          arButton.style.display = 'block';
-          info.textContent = "Camera not available, but you can still use AR.";
-        }
-        
-      } catch (error) {
-        console.error('Main initialization failed:', error);
-        showError("Failed to initialize application: " + error.message);
-      }
-    }
-
-    // Cleanup function
-    function cleanup() {
-      detectionActive = false;
-      if (handTracker) {
-        handTracker.close();
-      }
-      const video = document.getElementById('input-video');
-      if (video && video.srcObject) {
-        video.srcObject.getTracks().forEach(track => track.stop());
-      }
-    }
-
-    // Handle page unload
-    window.addEventListener('beforeunload', cleanup);
-
-    // Start the application
-    main();
+    });
   </script>
 </body>
 </html>
