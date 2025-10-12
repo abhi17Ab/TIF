@@ -485,7 +485,7 @@
             }
             
             currentModel = new THREE.Mesh(geometry, material);
-            currentModel.visible = false; // Hide until hand is detected
+            currentModel.visible = true; // Hide until hand is detected
             
             scene.add(currentModel);
             statusElement.textContent = `Loaded ${modelType} model. ${isTracking ? 'Show your palm to place it.' : 'Start hand tracking to begin.'}`;
