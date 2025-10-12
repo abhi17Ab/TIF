@@ -3,8 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Palm Model Viewer</title>
+    <title>AR Palm Model Viewer with Hand Tracking</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- MediaPipe CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <style>
         * {
             margin: 0;
@@ -65,6 +70,26 @@
             display: block;
         }
         
+        #video-element {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        #canvas-element {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
         .controls {
             display: flex;
             justify-content: center;
@@ -88,6 +113,12 @@
             background: rgba(255, 255, 255, 0.3);
             transform: translateY(-3px);
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
         }
         
         .model-selector {
@@ -176,24 +207,25 @@
             width: 150px;
         }
 
-        .hand-guide {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 150px;
-            height: 150px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
+        .tracking-options {
             display: flex;
-            align-items: center;
             justify-content: center;
-            opacity: 0.7;
+            gap: 15px;
+            margin-top: 10px;
         }
         
-        .hand-guide::before {
-            content: "✋";
-            font-size: 60px;
+        .tracking-option {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+        
+        .tracking-option.active {
+            background: rgba(255, 255, 255, 0.3);
+            border: 1px solid white;
         }
         
         .fallback-message {
@@ -238,19 +270,25 @@
     <div class="container">
         <header>
             <h1>AR Palm Model Viewer</h1>
-            <p class="subtitle">Experience 3D models on the palm of your hand</p>
+            <p class="subtitle">Real hand tracking with MediaPipe - 3D models on your palm</p>
         </header>
         
         <div class="content">
             <div class="ar-container">
                 <canvas id="ar-view"></canvas>
+                <video id="video-element" playsinline></video>
+                <canvas id="canvas-element"></canvas>
                 <div class="palm-indicator" id="palm-indicator"></div>
-                <div class="hand-guide" id="hand-guide"></div>
             </div>
             
             <div class="controls">
-                <button id="ar-button">Start AR Experience</button>
+                <button id="start-button">Start Hand Tracking</button>
                 <button id="reset-button">Reset Model</button>
+            </div>
+
+            <div class="tracking-options">
+                <div class="tracking-option active" data-option="show-landmarks">Show Hand Landmarks</div>
+                <div class="tracking-option" data-option="hide-landmarks">Hide Hand Landmarks</div>
             </div>
             
             <div class="model-selector">
@@ -263,9 +301,9 @@
             <div class="instructions">
                 <h2>How to Use</h2>
                 <ol>
-                    <li>Click "Start AR Experience" to activate your camera</li>
+                    <li>Click "Start Hand Tracking" to activate your camera</li>
                     <li>Allow camera access when prompted</li>
-                    <li>Hold your hand out with palm facing up towards the camera</li>
+                    <li>Hold your hand out with palm facing the camera</li>
                     <li>The 3D model will automatically appear on your palm</li>
                     <li>Move your hand to see the model from different angles</li>
                     <li>Use the model selector to change the 3D object</li>
@@ -273,17 +311,17 @@
             </div>
             
             <div class="status" id="status">
-                Ready to start AR experience
+                Ready to start hand tracking
             </div>
             
             <div class="desktop-message" id="desktop-message">
-                <h3>AR Works Best on Mobile</h3>
-                <p>For the best experience, try this on a mobile device with a supported browser like Chrome for Android.</p>
+                <h3>For Best Experience</h3>
+                <p>Make sure you have good lighting and your hand is clearly visible to the camera.</p>
             </div>
             
             <div class="fallback-message" id="fallback-message">
-                <h3>AR Not Supported</h3>
-                <p>Your device or browser doesn't support WebXR. Try using Chrome for Android or Safari for iOS.</p>
+                <h3>Camera Not Available</h3>
+                <p>Unable to access your camera. Please check permissions and try again.</p>
             </div>
         </div>
     </div>
@@ -292,47 +330,35 @@
         // Main variables
         let scene, camera, renderer;
         let currentModel = null;
-        let xrSession = null;
-        let isPalmDetected = false;
-        let palmPosition = new THREE.Vector3(0, -0.3, -0.5);
+        let hands = null;
+        let videoElement, canvasElement, canvasCtx;
+        let isTracking = false;
+        let showLandmarks = true;
+        
+        // Hand tracking variables
+        let palmPosition = new THREE.Vector3(0, 0, 0);
+        let handDetected = false;
         
         // DOM elements
-        const arButton = document.getElementById('ar-button');
+        const startButton = document.getElementById('start-button');
         const resetButton = document.getElementById('reset-button');
         const statusElement = document.getElementById('status');
         const palmIndicator = document.getElementById('palm-indicator');
-        const handGuide = document.getElementById('hand-guide');
         const fallbackMessage = document.getElementById('fallback-message');
         const desktopMessage = document.getElementById('desktop-message');
         const modelOptions = document.querySelectorAll('.model-option');
-        
-        // Check if we're on a mobile device
-        function isMobile() {
-            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        }
+        const trackingOptions = document.querySelectorAll('.tracking-option');
         
         // Initialize the application
         init();
         
         function init() {
-            // Show desktop message if not on mobile
-            if (!isMobile()) {
-                desktopMessage.style.display = 'block';
-            }
+            desktopMessage.style.display = 'block';
+            setupThreeJS();
             
-            // Check for WebXR support
-            if (navigator.xr) {
-                navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
-                    if (supported) {
-                        setupThreeJS();
-                        arButton.addEventListener('click', onARButtonClick);
-                    } else {
-                        showNotSupported();
-                    }
-                }).catch(showNotSupported);
-            } else {
-                showNotSupported();
-            }
+            // Add event listeners
+            startButton.addEventListener('click', toggleHandTracking);
+            resetButton.addEventListener('click', resetModel);
             
             // Add model selection event listeners
             modelOptions.forEach(option => {
@@ -343,21 +369,27 @@
                 });
             });
             
-            resetButton.addEventListener('click', resetModel);
-        }
-        
-        function showNotSupported() {
-            statusElement.textContent = 'WebXR AR not supported by your browser';
-            fallbackMessage.style.display = 'block';
-            arButton.disabled = true;
+            // Add tracking options event listeners
+            trackingOptions.forEach(option => {
+                option.addEventListener('click', () => {
+                    trackingOptions.forEach(opt => opt.classList.remove('active'));
+                    option.classList.add('active');
+                    showLandmarks = option.dataset.option === 'show-landmarks';
+                });
+            });
+            
+            // Start animation loop
+            renderer.setAnimationLoop(render);
         }
         
         function setupThreeJS() {
             // Set up Three.js scene
             scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
             
             // Set up camera
-            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 5);
             
             // Set up renderer
             renderer = new THREE.WebGLRenderer({ 
@@ -368,7 +400,6 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(document.querySelector('.ar-container').clientWidth, 
                             document.querySelector('.ar-container').clientHeight);
-            renderer.xr.enabled = true;
             
             // Add lighting
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
@@ -378,23 +409,17 @@
             directionalLight.position.set(5, 10, 7);
             scene.add(directionalLight);
             
-            // Create a simple palm representation (invisible in AR)
-            const palmGeometry = new THREE.CircleGeometry(0.1, 32);
-            const palmMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x00ff00, 
-                transparent: true, 
-                opacity: 0.0  // Make it invisible in AR
-            });
-            const palmMesh = new THREE.Mesh(palmGeometry, palmMaterial);
-            palmMesh.position.copy(palmPosition);
-            palmMesh.rotation.x = -Math.PI / 2; // Make it horizontal
-            scene.add(palmMesh);
+            // Get video and canvas elements
+            videoElement = document.getElementById('video-element');
+            canvasElement = document.getElementById('canvas-element');
+            canvasCtx = canvasElement.getContext('2d');
+            
+            // Set canvas size
+            canvasElement.width = document.querySelector('.ar-container').clientWidth;
+            canvasElement.height = document.querySelector('.ar-container').clientHeight;
             
             // Load initial model
             loadModel('cube');
-            
-            // Start animation loop
-            renderer.setAnimationLoop(render);
         }
         
         function loadModel(modelType) {
@@ -407,7 +432,7 @@
             
             switch(modelType) {
                 case 'cube':
-                    geometry = new THREE.BoxGeometry(0.05, 0.05, 0.05);
+                    geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4cc9f0,
                         metalness: 0.7,
@@ -416,7 +441,7 @@
                     break;
                     
                 case 'sphere':
-                    geometry = new THREE.SphereGeometry(0.03, 32, 32);
+                    geometry = new THREE.SphereGeometry(0.15, 32, 32);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0xf72585,
                         metalness: 0.5,
@@ -425,7 +450,7 @@
                     break;
                     
                 case 'torus':
-                    geometry = new THREE.TorusGeometry(0.03, 0.015, 16, 100);
+                    geometry = new THREE.TorusGeometry(0.15, 0.07, 16, 100);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4361ee,
                         metalness: 0.6,
@@ -434,8 +459,8 @@
                     break;
                     
                 case 'teapot':
-                    // For simplicity, we'll use a cylinder as a placeholder for a teapot
-                    geometry = new THREE.CylinderGeometry(0.025, 0.04, 0.05, 32);
+                    // Using a cone as a teapot placeholder
+                    geometry = new THREE.ConeGeometry(0.12, 0.3, 32);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4ade80,
                         metalness: 0.4,
@@ -445,81 +470,181 @@
             }
             
             currentModel = new THREE.Mesh(geometry, material);
-            currentModel.position.copy(palmPosition);
-            currentModel.visible = false; // Hide until palm is detected
+            currentModel.visible = false; // Hide until hand is detected
             
             scene.add(currentModel);
-            statusElement.textContent = `Loaded ${modelType} model. Show your palm to place it.`;
+            statusElement.textContent = `Loaded ${modelType} model. ${isTracking ? 'Show your palm to place it.' : 'Start hand tracking to begin.'}`;
         }
         
-        function onARButtonClick() {
-            if (xrSession) {
-                // Already in AR session - exit
-                xrSession.end();
-                return;
+        function toggleHandTracking() {
+            if (isTracking) {
+                stopHandTracking();
+            } else {
+                startHandTracking();
             }
+        }
+        
+        function startHandTracking() {
+            // Initialize MediaPipe Hands
+            hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
             
-            // Request AR session
-            navigator.xr.requestSession('immersive-ar', {
-                optionalFeatures: ['dom-overlay'],
-                domOverlay: { root: document.body }
-            }).then(onSessionStarted).catch(error => {
-                console.error('AR session failed:', error);
-                statusElement.textContent = 'Failed to start AR session: ' + error.message;
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            
+            hands.onResults(onHandResults);
+            
+            // Start camera
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    if (hands) {
+                        await hands.send({image: videoElement});
+                    }
+                },
+                width: 640,
+                height: 480
+            });
+            
+            camera.start().then(() => {
+                isTracking = true;
+                startButton.textContent = 'Stop Hand Tracking';
+                statusElement.textContent = 'Hand tracking started. Show your palm to the camera.';
+                palmIndicator.classList.add('visible');
+                videoElement.style.opacity = '0.3'; // Show video faintly for reference
+            }).catch(error => {
+                console.error('Camera start failed:', error);
+                statusElement.textContent = 'Failed to start camera: ' + error.message;
+                fallbackMessage.style.display = 'block';
             });
         }
         
-        function onSessionStarted(session) {
-            xrSession = session;
-            
-            // Set up XR renderer
-            renderer.xr.setSession(session);
-            
-            // Update UI
-            arButton.textContent = 'Exit AR';
-            statusElement.textContent = 'AR session started. Show your palm with palm facing up.';
-            palmIndicator.classList.add('visible');
-            handGuide.style.display = 'flex';
-            
-            // Simulate palm detection after a delay
-            setTimeout(simulatePalmDetection, 3000);
-            
-            // Add session end event
-            session.addEventListener('end', onSessionEnd);
-        }
-        
-        function simulatePalmDetection() {
-            if (xrSession && currentModel) {
-                isPalmDetected = true;
-                currentModel.visible = true;
-                statusElement.textContent = 'Palm detected! Model is now on your palm. Move your hand to explore.';
-                palmIndicator.classList.remove('visible');
-                handGuide.style.display = 'none';
+        function stopHandTracking() {
+            if (hands) {
+                hands.close();
+                hands = null;
             }
-        }
-        
-        function onSessionEnd() {
-            xrSession = null;
-            isPalmDetected = false;
             
-            // Update UI
-            arButton.textContent = 'Start AR Experience';
-            statusElement.textContent = 'AR session ended';
+            if (videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
+            }
+            
+            isTracking = false;
+            handDetected = false;
+            startButton.textContent = 'Start Hand Tracking';
+            statusElement.textContent = 'Hand tracking stopped.';
             palmIndicator.classList.remove('visible');
-            handGuide.style.display = 'none';
+            videoElement.style.opacity = '0';
             
-            // Hide the model
+            // Clear canvas
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // Hide model
             if (currentModel) {
                 currentModel.visible = false;
             }
         }
         
+        function onHandResults(results) {
+            // Clear canvas
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // Draw video feed
+            canvasCtx.save();
+            canvasCtx.scale(-1, 1);
+            canvasCtx.translate(-canvasElement.width, 0);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.restore();
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                handDetected = true;
+                
+                // Get the first hand
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Draw hand landmarks if enabled
+                if (showLandmarks) {
+                    drawHandLandmarks(landmarks, results.multiHandedness[0]);
+                }
+                
+                // Calculate palm center (using wrist and middle finger base)
+                const wrist = landmarks[0]; // Wrist landmark
+                const middleBase = landmarks[9]; // Middle finger MCP joint
+                
+                // Calculate palm center in 2D
+                const palmX = (wrist.x + middleBase.x) / 2;
+                const palmY = (wrist.y + middleBase.y) / 2;
+                
+                // Convert to 3D coordinates for Three.js
+                // Flip X coordinate because camera is mirrored
+                const x = (0.5 - palmX) * 10; // Scale for 3D space
+                const y = (0.5 - palmY) * 10; // Scale for 3D space
+                const z = -5; // Fixed depth
+                
+                palmPosition.set(x, y, z);
+                
+                // Update model position and visibility
+                if (currentModel) {
+                    currentModel.position.copy(palmPosition);
+                    currentModel.visible = true;
+                    
+                    // Add slight rotation based on hand orientation
+                    const indexBase = landmarks[5]; // Index finger base
+                    const pinkyBase = landmarks[17]; // Pinky finger base
+                    
+                    const handOrientation = Math.atan2(
+                        indexBase.y - pinkyBase.y,
+                        indexBase.x - pinkyBase.x
+                    );
+                    
+                    currentModel.rotation.z = -handOrientation;
+                }
+                
+                statusElement.textContent = 'Hand detected! Model is on your palm.';
+                palmIndicator.classList.remove('visible');
+            } else {
+                handDetected = false;
+                if (currentModel) {
+                    currentModel.visible = false;
+                }
+                statusElement.textContent = 'Show your palm to the camera.';
+                palmIndicator.classList.add('visible');
+            }
+        }
+        
+        function drawHandLandmarks(landmarks, handedness) {
+            canvasCtx.save();
+            canvasCtx.scale(-1, 1);
+            canvasCtx.translate(-canvasElement.width, 0);
+            
+            // Draw connections
+            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+                color: handedness.label === 'Left' ? '#00FF00' : '#FF0000',
+                lineWidth: 2
+            });
+            
+            // Draw landmarks
+            drawLandmarks(canvasCtx, landmarks, {
+                color: handedness.label === 'Left' ? '#00FF00' : '#FF0000',
+                lineWidth: 1,
+                radius: 2
+            });
+            
+            canvasCtx.restore();
+        }
+        
         function resetModel() {
             if (currentModel) {
-                currentModel.position.copy(palmPosition);
                 currentModel.rotation.set(0, 0, 0);
                 currentModel.scale.set(1, 1, 1);
-                statusElement.textContent = 'Model reset to palm position.';
+                statusElement.textContent = 'Model reset.';
             }
         }
         
@@ -527,14 +652,20 @@
             if (currentModel && currentModel.visible) {
                 // Rotate the model slowly for visual effect
                 currentModel.rotation.y += 0.01;
-                
-                // Simulate slight movement as if following palm
-                // In a real implementation, this would track actual hand movement
-                currentModel.position.y = palmPosition.y + Math.sin(Date.now() * 0.001) * 0.02;
             }
             
             renderer.render(scene, camera);
         }
+        
+        // MediaPipe Hand Connections
+        const HAND_CONNECTIONS = [
+            [0, 1], [1, 2], [2, 3], [3, 4],
+            [0, 5], [5, 6], [6, 7], [7, 8],
+            [0, 9], [9, 10], [10, 11], [11, 12],
+            [0, 13], [13, 14], [14, 15], [15, 16],
+            [0, 17], [17, 18], [18, 19], [19, 20],
+            [5, 9], [9, 13], [13, 17]
+        ];
     </script>
 </body>
 </html>
