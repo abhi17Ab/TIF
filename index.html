@@ -3,688 +3,204 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Palm Model Viewer with Hand Tracking</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- MediaPipe CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <title>Hand Tracking with Babylon.js</title>
     <style>
-        * {
+        body {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
-            color: white;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        header {
-            text-align: center;
-            padding: 30px 0;
-        }
-        
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-        }
-        
-        .subtitle {
-            font-size: 1.2rem;
-            opacity: 0.9;
-            margin-bottom: 30px;
-        }
-        
-        .content {
-            display: flex;
-            flex-direction: column;
-            gap: 30px;
-        }
-        
-        .ar-container {
-            position: relative;
-            width: 100%;
-            height: 500px;
-            border-radius: 15px;
             overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-            background: rgba(0, 0, 0, 0.2);
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
         }
-        
-        #output-canvas {
+        #renderCanvas {
             width: 100%;
-            height: 100%;
+            height: 100vh;
             display: block;
         }
-        
-        .controls {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-top: 20px;
-        }
-        
-        button {
-            padding: 12px 25px;
-            background: rgba(255, 255, 255, 0.2);
-            border: 2px solid rgba(255, 255, 255, 0.5);
-            border-radius: 50px;
-            color: white;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(5px);
-        }
-        
-        button:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-3px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-        
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .model-selector {
-            display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 15px;
-            margin-top: 20px;
-        }
-        
-        .model-option {
-            padding: 10px 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .model-option:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
-        }
-        
-        .model-option.active {
-            background: rgba(255, 255, 255, 0.3);
-            border: 2px solid white;
-        }
-        
-        .instructions {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 20px;
-            border-radius: 15px;
-            margin-top: 20px;
-        }
-        
-        .instructions h2 {
-            margin-bottom: 15px;
-            text-align: center;
-        }
-        
-        .instructions ol {
-            margin-left: 20px;
-            line-height: 1.6;
-        }
-        
-        .instructions li {
-            margin-bottom: 10px;
-        }
-        
-        .status {
-            text-align: center;
-            padding: 10px;
-            margin-top: 15px;
-            border-radius: 10px;
-            background: rgba(255, 255, 255, 0.1);
-        }
-        
-        .palm-indicator {
+        #info {
             position: absolute;
-            top: 50%;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 400px;
+            z-index: 100;
+        }
+        #startButton {
+            position: absolute;
+            bottom: 20px;
             left: 50%;
-            transform: translate(-50%, -50%);
-            width: 120px;
-            height: 120px;
-            border: 3px dashed rgba(255, 255, 255, 0.7);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.5s ease;
-            z-index: 10;
-        }
-        
-        .palm-indicator.visible {
-            opacity: 1;
-        }
-        
-        .palm-indicator::after {
-            content: "Show your palm";
+            transform: translateX(-50%);
+            background-color: #4CAF50;
+            border: none;
             color: white;
+            padding: 15px 32px;
             text-align: center;
-            font-size: 14px;
-            position: absolute;
-            bottom: -40px;
-            width: 150px;
-        }
-
-        .tracking-options {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-top: 10px;
-        }
-        
-        .tracking-option {
-            padding: 8px 16px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
             cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
+            border-radius: 5px;
+            z-index: 100;
         }
-        
-        .tracking-option.active {
-            background: rgba(255, 255, 255, 0.3);
-            border: 1px solid white;
-        }
-        
-        .fallback-message {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            background: rgba(255, 0, 0, 0.2);
-            border-radius: 10px;
-            margin-top: 20px;
-        }
-
-        .desktop-message {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            background: rgba(255, 165, 0, 0.3);
-            border-radius: 10px;
-            margin-top: 20px;
-        }
-        
-        .model-canvas {
+        #status {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 5;
-        }
-        
-        @media (max-width: 768px) {
-            .ar-container {
-                height: 400px;
-            }
-            
-            h1 {
-                font-size: 2rem;
-            }
-            
-            .controls {
-                flex-direction: column;
-                align-items: center;
-            }
-            
-            button {
-                width: 80%;
-            }
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>AR Palm Model Viewer</h1>
-            <p class="subtitle">Real hand tracking with MediaPipe - 3D models on your palm</p>
-        </header>
-        
-        <div class="content">
-            <div class="ar-container">
-                <canvas id="output-canvas" width="1280" height="720"></canvas>
-                <canvas id="model-canvas" class="model-canvas"></canvas>
-                <div class="palm-indicator" id="palm-indicator"></div>
-            </div>
-            
-            <div class="controls">
-                <button id="start-button">Start Hand Tracking</button>
-                <button id="reset-button">Reset Model</button>
-            </div>
-
-            <div class="tracking-options">
-                <div class="tracking-option active" data-option="show-landmarks">Show Hand Landmarks</div>
-                <div class="tracking-option" data-option="hide-landmarks">Hide Hand Landmarks</div>
-            </div>
-            
-            <div class="model-selector">
-                <div class="model-option active" data-model="cube">Cube</div>
-                <div class="model-option" data-model="sphere">Sphere</div>
-                <div class="model-option" data-model="torus">Torus</div>
-                <div class="model-option" data-model="teapot">Teapot</div>
-            </div>
-            
-            <div class="instructions">
-                <h2>How to Use</h2>
-                <ol>
-                    <li>Click "Start Hand Tracking" to activate your camera</li>
-                    <li>Allow camera access when prompted</li>
-                    <li>Hold your hand out with palm facing the camera</li>
-                    <li>The 3D model will automatically appear on your palm</li>
-                    <li>Move your hand to see the model from different angles</li>
-                    <li>Use the model selector to change the 3D object</li>
-                </ol>
-            </div>
-            
-            <div class="status" id="status">
-                Ready to start hand tracking
-            </div>
-            
-            <div class="desktop-message" id="desktop-message">
-                <h3>For Best Experience</h3>
-                <p>Make sure you have good lighting and your hand is clearly visible to the camera.</p>
-            </div>
-            
-            <div class="fallback-message" id="fallback-message">
-                <h3>Camera Not Available</h3>
-                <p>Unable to access your camera. Please check permissions and try again.</p>
-            </div>
-        </div>
+    <canvas id="renderCanvas"></canvas>
+    
+    <div id="info">
+        <h2>Hand Tracking Demo</h2>
+        <p>This demo uses WebXR and Babylon.js to track your hands and place a 3D model on your palm.</p>
+        <p><strong>Instructions:</strong></p>
+        <ol>
+            <li>Click "Start XR" to begin</li>
+            <li>Allow camera and motion sensor permissions</li>
+            <li>Hold your hand in front of the camera</li>
+            <li>A 3D model will appear on your palm</li>
+        </ol>
+        <p><strong>Note:</strong> This works best with devices that support hand tracking, like Meta Quest or compatible smartphones.</p>
     </div>
+    
+    <div id="status">Waiting to start XR session...</div>
+    <button id="startButton">Start XR</button>
+
+    <!-- Babylon.js from CDN -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
 
     <script>
-        // Main variables
-        let scene, camera, renderer;
-        let currentModel = null;
-        let hands = null;
-        let videoElement;
-        let outputCanvas, outputCtx;
-        let modelCanvas, modelCtx;
-        let isTracking = false;
-        let showLandmarks = true;
+        // Get DOM elements
+        const canvas = document.getElementById("renderCanvas");
+        const startButton = document.getElementById("startButton");
+        const statusDiv = document.getElementById("status");
+
+        // Create Babylon.js engine
+        const engine = new BABYLON.Engine(canvas, true);
         
-        // Hand tracking variables
-        let handDetected = false;
-        let lastPalmPosition = { x: 0, y: 0 };
-        
-        // DOM elements
-        const startButton = document.getElementById('start-button');
-        const resetButton = document.getElementById('reset-button');
-        const statusElement = document.getElementById('status');
-        const palmIndicator = document.getElementById('palm-indicator');
-        const fallbackMessage = document.getElementById('fallback-message');
-        const desktopMessage = document.getElementById('desktop-message');
-        const modelOptions = document.querySelectorAll('.model-option');
-        const trackingOptions = document.querySelectorAll('.tracking-option');
-        
-        // Initialize the application
-        init();
-        
-        function init() {
-            desktopMessage.style.display = 'block';
-            setupCanvases();
-            setupThreeJS();
+        // Create scene
+        const createScene = function () {
+            const scene = new BABYLON.Scene(engine);
             
-            // Add event listeners
-            startButton.addEventListener('click', toggleHandTracking);
-            resetButton.addEventListener('click', resetModel);
+            // Create a basic light
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            light.intensity = 0.7;
             
-            // Add model selection event listeners
-            modelOptions.forEach(option => {
-                option.addEventListener('click', () => {
-                    modelOptions.forEach(opt => opt.classList.remove('active'));
-                    option.classList.add('active');
-                    loadModel(option.dataset.model);
-                });
+            // Create a directional light for better illumination
+            const dirLight = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(0, -1, 0), scene);
+            dirLight.position = new BABYLON.Vector3(0, 10, 0);
+            dirLight.intensity = 0.5;
+            
+            // Create environment
+            const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 10, height: 10}, scene);
+            ground.position.y = -1.7;
+            
+            const groundMaterial = new BABYLON.StandardMaterial("groundMaterial", scene);
+            groundMaterial.diffuseColor = new BABYLON.Color3(0.2, 0.2, 0.3);
+            ground.material = groundMaterial;
+            
+            // Create a simple cube as our 3D model
+            const model = BABYLON.MeshBuilder.CreateBox("palmModel", {size: 0.1}, scene);
+            const material = new BABYLON.StandardMaterial("modelMaterial", scene);
+            material.diffuseColor = new BABYLON.Color3(0.8, 0.3, 0.3);
+            material.specularColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+            model.material = material;
+            
+            // Initially hide the model
+            model.setEnabled(false);
+            
+            // Set up WebXR
+            const xrHelper = scene.createDefaultXRExperienceAsync({
+                floorMeshes: [ground]
             });
             
-            // Add tracking options event listeners
-            trackingOptions.forEach(option => {
-                option.addEventListener('click', () => {
-                    trackingOptions.forEach(opt => opt.classList.remove('active'));
-                    option.classList.add('active');
-                    showLandmarks = option.dataset.option === 'show-landmarks';
-                });
-            });
-        }
-        
-        function setupCanvases() {
-            // Setup output canvas for video and hand landmarks
-            outputCanvas = document.getElementById('output-canvas');
-            outputCtx = outputCanvas.getContext('2d');
-            
-            // Setup model canvas for 3D rendering
-            modelCanvas = document.getElementById('model-canvas');
-            modelCanvas.width = outputCanvas.width;
-            modelCanvas.height = outputCanvas.height;
-            modelCtx = modelCanvas.getContext('2d');
-        }
-        
-        function setupThreeJS() {
-            // Set up Three.js scene
-            scene = new THREE.Scene();
-            
-            // Set up camera
-            camera = new THREE.PerspectiveCamera(75, modelCanvas.width / modelCanvas.height, 0.1, 1000);
-            camera.position.z = 5;
-            
-            // Set up renderer
-            renderer = new THREE.WebGLRenderer({ 
-                antialias: true,
-                alpha: true
-            });
-            renderer.setSize(modelCanvas.width, modelCanvas.height);
-            renderer.setClearColor(0x000000, 0); // Transparent background
-            
-            // Add lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
-            scene.add(ambientLight);
-            
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(5, 10, 7);
-            scene.add(directionalLight);
-            
-            // Load initial model
-            loadModel('cube');
-            
-            // Start animation loop
-            animate();
-        }
-        
-        function loadModel(modelType) {
-            // Remove current model if exists
-            if (currentModel) {
-                scene.remove(currentModel);
-            }
-            
-            let geometry, material;
-            
-            switch(modelType) {
-                case 'cube':
-                    geometry = new THREE.BoxGeometry(1, 1, 1);
-                    material = new THREE.MeshStandardMaterial({ 
-                        color: 0x4cc9f0,
-                        metalness: 0.7,
-                        roughness: 0.2
-                    });
-                    break;
+            // When XR is ready
+            xrHelper.baseExperience.onInitialXRPoseSetObservable.add(() => {
+                statusDiv.textContent = "XR session started. Waiting for hand tracking...";
+                
+                // Enable hand tracking
+                const featuresManager = xrHelper.baseExperience.featuresManager;
+                
+                // Check if hand tracking is available
+                if (featuresManager.enableFeature(BABYLON.WebXRFeatureName.HAND_TRACKING, "latest", {
+                    xrInput: xrHelper.input
+                })) {
+                    statusDiv.textContent = "Hand tracking enabled. Show your hands to the camera.";
                     
-                case 'sphere':
-                    geometry = new THREE.SphereGeometry(0.5, 32, 32);
-                    material = new THREE.MeshStandardMaterial({ 
-                        color: 0xf72585,
-                        metalness: 0.5,
-                        roughness: 0.3
+                    // Listen for hand tracking events
+                    xrHelper.input.onHandAddedObservable.add((hand) => {
+                        statusDiv.textContent = "Hand detected! Model placed on palm.";
+                        
+                        // Get the palm joint
+                        const palmJoint = hand.getJointMesh("palm");
+                        
+                        if (palmJoint) {
+                            // Parent the model to the palm joint
+                            model.setEnabled(true);
+                            model.parent = palmJoint;
+                            
+                            // Position the model on the palm
+                            model.position = new BABYLON.Vector3(0, 0.05, 0);
+                        }
                     });
-                    break;
                     
-                case 'torus':
-                    geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 100);
-                    material = new THREE.MeshStandardMaterial({ 
-                        color: 0x4361ee,
-                        metalness: 0.6,
-                        roughness: 0.2
+                    xrHelper.input.onHandRemovedObservable.add(() => {
+                        statusDiv.textContent = "Hand removed. Show your hand again to place the model.";
+                        model.setEnabled(false);
                     });
-                    break;
-                    
-                case 'teapot':
-                    // Using a cone as a teapot placeholder
-                    geometry = new THREE.ConeGeometry(0.4, 1, 32);
-                    material = new THREE.MeshStandardMaterial({ 
-                        color: 0x4ade80,
-                        metalness: 0.4,
-                        roughness: 0.4
-                    });
-                    break;
-            }
-            
-            currentModel = new THREE.Mesh(geometry, material);
-            currentModel.visible = false;
-            
-            scene.add(currentModel);
-            statusElement.textContent = `Loaded ${modelType} model. ${isTracking ? 'Show your palm to place it.' : 'Start hand tracking to begin.'}`;
-        }
-        
-        function toggleHandTracking() {
-            if (isTracking) {
-                stopHandTracking();
-            } else {
-                startHandTracking();
-            }
-        }
-        
-        function startHandTracking() {
-            // Create video element if it doesn't exist
-            if (!videoElement) {
-                videoElement = document.createElement('video');
-                videoElement.setAttribute('playsinline', '');
-                videoElement.setAttribute('autoplay', '');
-                videoElement.style.display = 'none';
-                document.body.appendChild(videoElement);
-            }
-            
-            // Initialize MediaPipe Hands
-            hands = new Hands({
-                locateFile: (file) => {
-                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                } else {
+                    statusDiv.textContent = "Hand tracking not supported on this device.";
                 }
             });
             
-            hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
-            
-            hands.onResults(onHandResults);
-            
-            // Start camera
-            const camera = new Camera(videoElement, {
-                onFrame: async () => {
-                    if (hands) {
-                        await hands.send({image: videoElement});
-                    }
-                },
-                width: 1280,
-                height: 720
-            });
-            
-            camera.start().then(() => {
-                isTracking = true;
-                startButton.textContent = 'Stop Hand Tracking';
-                statusElement.textContent = 'Hand tracking started. Show your palm to the camera.';
-                palmIndicator.classList.add('visible');
-            }).catch(error => {
-                console.error('Camera start failed:', error);
-                statusElement.textContent = 'Failed to start camera: ' + error.message;
-                fallbackMessage.style.display = 'block';
-            });
-        }
-        
-        function stopHandTracking() {
-            if (hands) {
-                hands.close();
-                hands = null;
-            }
-            
-            if (videoElement && videoElement.srcObject) {
-                videoElement.srcObject.getTracks().forEach(track => track.stop());
-                videoElement.srcObject = null;
-            }
-            
-            isTracking = false;
-            handDetected = false;
-            startButton.textContent = 'Start Hand Tracking';
-            statusElement.textContent = 'Hand tracking stopped.';
-            palmIndicator.classList.remove('visible');
-            
-            // Clear canvas
-            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-            modelCtx.clearRect(0, 0, modelCanvas.width, modelCanvas.height);
-            
-            // Hide model
-            if (currentModel) {
-                currentModel.visible = false;
-            }
-        }
-        
-        function onHandResults(results) {
-            // Draw video feed to output canvas
-            outputCtx.save();
-            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-            outputCtx.drawImage(results.image, 0, 0, outputCanvas.width, outputCanvas.height);
-            outputCtx.restore();
-            
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                handDetected = true;
+            return scene;
+        };
+
+        // Create the scene
+        const scene = createScene();
+
+        // Start XR session when button is clicked
+        startButton.addEventListener("click", async () => {
+            try {
+                statusDiv.textContent = "Starting XR session...";
+                startButton.disabled = true;
                 
-                // Get the first hand
-                const landmarks = results.multiHandLandmarks[0];
-                const handedness = results.multiHandedness[0];
+                // Get the XR helper from the scene
+                const xrHelper = scene.getEngine().getRenderingCanvas().xr;
                 
-                // Draw hand landmarks if enabled
-                if (showLandmarks) {
-                    drawHandLandmarks(landmarks, handedness);
+                if (xrHelper) {
+                    // Start immersive VR session
+                    await xrHelper.baseExperience.enterXRAsync("immersive-vr", "local-floor");
                 }
-                
-                // Calculate palm center
-                const wrist = landmarks[0]; // Wrist landmark
-                const middleBase = landmarks[9]; // Middle finger MCP joint
-                
-                // Calculate palm center in canvas coordinates
-                const palmX = (wrist.x + middleBase.x) / 2 * outputCanvas.width;
-                const palmY = (wrist.y + middleBase.y) / 2 * outputCanvas.height;
-                
-                lastPalmPosition = { x: palmX, y: palmY };
-                
-                // Update model position and visibility
-                if (currentModel) {
-                    currentModel.visible = true;
-                    
-                    // Position the model in 3D space based on palm position
-                    const x = (palmX / outputCanvas.width - 0.5) * 10;
-                    const y = (0.5 - palmY / outputCanvas.height) * 10;
-                    
-                    currentModel.position.set(x, y, 0);
-                    
-                    // Add some rotation based on hand orientation
-                    const indexBase = landmarks[5];
-                    const pinkyBase = landmarks[17];
-                    const handOrientation = Math.atan2(
-                        indexBase.y - pinkyBase.y,
-                        indexBase.x - pinkyBase.x
-                    );
-                    
-                    currentModel.rotation.z = -handOrientation;
-                }
-                
-                statusElement.textContent = 'Hand detected! Model is on your palm.';
-                palmIndicator.classList.remove('visible');
-            } else {
-                handDetected = false;
-                if (currentModel) {
-                    currentModel.visible = false;
-                }
-                statusElement.textContent = 'Show your palm to the camera.';
-                palmIndicator.classList.add('visible');
+            } catch (error) {
+                console.error("Failed to start XR session:", error);
+                statusDiv.textContent = "Failed to start XR session: " + error.message;
+                startButton.disabled = false;
             }
-        }
-        
-        function drawHandLandmarks(landmarks, handedness) {
-            outputCtx.save();
-            
-            // Draw connections
-            drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, {
-                color: handedness.label === 'Left' ? '#00FF00' : '#FF0000',
-                lineWidth: 2
-            });
-            
-            // Draw landmarks
-            drawLandmarks(outputCtx, landmarks, {
-                color: handedness.label === 'Left' ? '#00FF00' : '#FF0000',
-                lineWidth: 1,
-                radius: 3
-            });
-            
-            outputCtx.restore();
-        }
-        
-        function resetModel() {
-            if (currentModel) {
-                currentModel.rotation.set(0, 0, 0);
-                currentModel.scale.set(1, 1, 1);
-                statusElement.textContent = 'Model reset.';
-            }
-        }
-        
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            if (currentModel && currentModel.visible) {
-                // Rotate the model slowly for visual effect
-                currentModel.rotation.y += 0.01;
-                
-                // Render Three.js scene to model canvas
-                renderer.render(scene, camera);
-                
-                // Clear model canvas and draw the rendered 3D scene
-                modelCtx.clearRect(0, 0, modelCanvas.width, modelCanvas.height);
-                modelCtx.drawImage(renderer.domElement, 0, 0, modelCanvas.width, modelCanvas.height);
-            } else {
-                // Clear model canvas if no model is visible
-                modelCtx.clearRect(0, 0, modelCanvas.width, modelCanvas.height);
-            }
-        }
-        
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            const container = document.querySelector('.ar-container');
-            outputCanvas.width = container.clientWidth;
-            outputCanvas.height = container.clientHeight;
-            modelCanvas.width = container.clientWidth;
-            modelCanvas.height = container.clientHeight;
-            
-            camera.aspect = modelCanvas.width / modelCanvas.height;
-            camera.updateProjectionMatrix();
-            renderer.setSize(modelCanvas.width, modelCanvas.height);
         });
-        
-        // MediaPipe Hand Connections
-        const HAND_CONNECTIONS = [
-            [0, 1], [1, 2], [2, 3], [3, 4],
-            [0, 5], [5, 6], [6, 7], [7, 8],
-            [0, 9], [9, 10], [10, 11], [11, 12],
-            [0, 13], [13, 14], [14, 15], [15, 16],
-            [0, 17], [17, 18], [18, 19], [19, 20],
-            [5, 9], [9, 13], [13, 17]
-        ];
+
+        // Render loop
+        engine.runRenderLoop(() => {
+            scene.render();
+        });
+
+        // Handle window resize
+        window.addEventListener("resize", () => {
+            engine.resize();
+        });
     </script>
 </body>
 </html>
-
-
