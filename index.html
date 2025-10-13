@@ -330,7 +330,6 @@
         // Hand tracking variables
         let handDetected = false;
         let lastPalmPosition = { x: 0, y: 0 };
-        let palmFacingCamera = false;
         
         // DOM elements
         const startButton = document.getElementById('start-button');
@@ -426,7 +425,7 @@
             
             switch(modelType) {
                 case 'cube':
-                    geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+                    geometry = new THREE.BoxGeometry(1, 1, 1);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4cc9f0,
                         metalness: 0.7,
@@ -435,7 +434,7 @@
                     break;
                     
                 case 'sphere':
-                    geometry = new THREE.SphereGeometry(0.2, 32, 32);
+                    geometry = new THREE.SphereGeometry(0.5, 32, 32);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0xf72585,
                         metalness: 0.5,
@@ -444,7 +443,7 @@
                     break;
                     
                 case 'torus':
-                    geometry = new THREE.TorusGeometry(0.2, 0.1, 16, 100);
+                    geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 100);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4361ee,
                         metalness: 0.6,
@@ -454,7 +453,7 @@
                     
                 case 'teapot':
                     // Using a cone as a teapot placeholder
-                    geometry = new THREE.ConeGeometry(0.15, 0.3, 32);
+                    geometry = new THREE.ConeGeometry(0.4, 1, 32);
                     material = new THREE.MeshStandardMaterial({ 
                         color: 0x4ade80,
                         metalness: 0.4,
@@ -573,19 +572,23 @@
                     drawHandLandmarks(landmarks, handedness);
                 }
                 
-                // Calculate palm center and check if palm is facing camera
-                const palmCenter = calculatePalmCenter(landmarks);
-                palmFacingCamera = isPalmFacingCamera(landmarks);
+                // Calculate palm center
+                const wrist = landmarks[0]; // Wrist landmark
+                const middleBase = landmarks[9]; // Middle finger MCP joint
                 
-                lastPalmPosition = { x: palmCenter.x, y: palmCenter.y };
+                // Calculate palm center in canvas coordinates
+                const palmX = (wrist.x + middleBase.x) / 2 * outputCanvas.width;
+                const palmY = (wrist.y + middleBase.y) / 2 * outputCanvas.height;
+                
+                lastPalmPosition = { x: palmX, y: palmY };
                 
                 // Update model position and visibility
-                if (currentModel && palmFacingCamera) {
+                if (currentModel) {
                     currentModel.visible = true;
                     
                     // Position the model in 3D space based on palm position
-                    const x = (palmCenter.x / outputCanvas.width - 0.5) * 10;
-                    const y = (0.5 - palmCenter.y / outputCanvas.height) * 10;
+                    const x = (palmX / outputCanvas.width - 0.5) * 10;
+                    const y = (0.5 - palmY / outputCanvas.height) * 10;
                     
                     currentModel.position.set(x, y, 0);
                     
@@ -598,70 +601,18 @@
                     );
                     
                     currentModel.rotation.z = -handOrientation;
-                    
-                    statusElement.textContent = 'Hand detected! Model is on your palm.';
-                    palmIndicator.classList.remove('visible');
-                } else {
-                    if (currentModel) {
-                        currentModel.visible = false;
-                    }
-                    statusElement.textContent = 'Palm detected. Please face your palm towards the camera.';
-                    palmIndicator.classList.add('visible');
                 }
+                
+                statusElement.textContent = 'Hand detected! Model is on your palm.';
+                palmIndicator.classList.remove('visible');
             } else {
                 handDetected = false;
-                palmFacingCamera = false;
                 if (currentModel) {
                     currentModel.visible = false;
                 }
                 statusElement.textContent = 'Show your palm to the camera.';
                 palmIndicator.classList.add('visible');
             }
-        }
-        
-        function calculatePalmCenter(landmarks) {
-            // Use wrist and middle finger base to calculate palm center
-            const wrist = landmarks[0]; // Wrist landmark
-            const middleBase = landmarks[9]; // Middle finger MCP joint
-            
-            // Calculate palm center in canvas coordinates
-            const palmX = (wrist.x + middleBase.x) / 2 * outputCanvas.width;
-            const palmY = (wrist.y + middleBase.y) / 2 * outputCanvas.height;
-            
-            return { x: palmX, y: palmY };
-        }
-        
-        function isPalmFacingCamera(landmarks) {
-            // Use the positions of the palm landmarks to determine if palm is facing camera
-            const wrist = landmarks[0];
-            const thumbBase = landmarks[1];
-            const indexBase = landmarks[5];
-            const pinkyBase = landmarks[17];
-            
-            // Calculate vectors for palm orientation
-            const thumbToPinky = {
-                x: pinkyBase.x - thumbBase.x,
-                y: pinkyBase.y - thumbBase.y
-            };
-            
-            const wristToMiddle = {
-                x: landmarks[9].x - wrist.x,
-                y: landmarks[9].y - wrist.y
-            };
-            
-            // Calculate the cross product to determine orientation
-            const crossProduct = (thumbToPinky.x * wristToMiddle.y) - (thumbToPinky.y * wristToMiddle.x);
-            
-            // For a right hand, if cross product is positive, palm is facing camera
-            // For a left hand, if cross product is negative, palm is facing camera
-            // We'll use a simple heuristic based on the relative positions
-            const thumbX = thumbBase.x;
-            const pinkyX = pinkyBase.x;
-            
-            // If thumb is to the left of pinky (for right hand) or vice versa (for left hand)
-            // we can assume the palm is facing the camera
-            // This is a simplified approach - in a real application you'd want more robust detection
-            return Math.abs(crossProduct) > 0.01; // Use a threshold to determine if palm is facing camera
         }
         
         function drawHandLandmarks(landmarks, handedness) {
@@ -735,3 +686,5 @@
     </script>
 </body>
 </html>
+
+
