@@ -179,13 +179,13 @@
         }
         
         .palm-indicator::after {
-            content: "Show your palm facing camera";
+            content: "Show your palm";
             color: white;
             text-align: center;
             font-size: 14px;
             position: absolute;
             bottom: -40px;
-            width: 180px;
+            width: 150px;
         }
 
         .tracking-options {
@@ -227,7 +227,7 @@
             margin-top: 20px;
         }
         
-        .model-overlay {
+        .model-canvas {
             position: absolute;
             top: 0;
             left: 0;
@@ -267,7 +267,7 @@
         <div class="content">
             <div class="ar-container">
                 <canvas id="output-canvas" width="1280" height="720"></canvas>
-                <div id="model-overlay" class="model-overlay"></div>
+                <canvas id="model-canvas" class="model-canvas"></canvas>
                 <div class="palm-indicator" id="palm-indicator"></div>
             </div>
             
@@ -296,7 +296,6 @@
                     <li>Hold your hand out with palm facing the camera</li>
                     <li>The 3D model will automatically appear on your palm</li>
                     <li>Move your hand to see the model from different angles</li>
-                    <li>Move hand closer/farther to scale the model</li>
                     <li>Use the model selector to change the 3D object</li>
                 </ol>
             </div>
@@ -319,22 +318,19 @@
 
     <script>
         // Main variables
+        let scene, camera, renderer;
+        let currentModel = null;
         let hands = null;
         let videoElement;
         let outputCanvas, outputCtx;
+        let modelCanvas, modelCtx;
         let isTracking = false;
         let showLandmarks = true;
         
         // Hand tracking variables
         let handDetected = false;
         let lastPalmPosition = { x: 0, y: 0 };
-        let handSizeHistory = [];
-        const MAX_HISTORY = 5;
-        
-        // 3D Model variables
-        let currentModel = null;
-        let modelType = 'cube';
-        let modelScale = 1;
+        let palmFacingCamera = false;
         
         // DOM elements
         const startButton = document.getElementById('start-button');
@@ -345,14 +341,14 @@
         const desktopMessage = document.getElementById('desktop-message');
         const modelOptions = document.querySelectorAll('.model-option');
         const trackingOptions = document.querySelectorAll('.tracking-option');
-        const modelOverlay = document.getElementById('model-overlay');
         
         // Initialize the application
         init();
         
         function init() {
             desktopMessage.style.display = 'block';
-            setupCanvas();
+            setupCanvases();
+            setupThreeJS();
             
             // Add event listeners
             startButton.addEventListener('click', toggleHandTracking);
@@ -363,8 +359,7 @@
                 option.addEventListener('click', () => {
                     modelOptions.forEach(opt => opt.classList.remove('active'));
                     option.classList.add('active');
-                    modelType = option.dataset.model;
-                    statusElement.textContent = `Switched to ${modelType} model`;
+                    loadModel(option.dataset.model);
                 });
             });
             
@@ -378,10 +373,101 @@
             });
         }
         
-        function setupCanvas() {
+        function setupCanvases() {
             // Setup output canvas for video and hand landmarks
             outputCanvas = document.getElementById('output-canvas');
             outputCtx = outputCanvas.getContext('2d');
+            
+            // Setup model canvas for 3D rendering
+            modelCanvas = document.getElementById('model-canvas');
+            modelCanvas.width = outputCanvas.width;
+            modelCanvas.height = outputCanvas.height;
+            modelCtx = modelCanvas.getContext('2d');
+        }
+        
+        function setupThreeJS() {
+            // Set up Three.js scene
+            scene = new THREE.Scene();
+            
+            // Set up camera
+            camera = new THREE.PerspectiveCamera(75, modelCanvas.width / modelCanvas.height, 0.1, 1000);
+            camera.position.z = 5;
+            
+            // Set up renderer
+            renderer = new THREE.WebGLRenderer({ 
+                antialias: true,
+                alpha: true
+            });
+            renderer.setSize(modelCanvas.width, modelCanvas.height);
+            renderer.setClearColor(0x000000, 0); // Transparent background
+            
+            // Add lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7);
+            scene.add(directionalLight);
+            
+            // Load initial model
+            loadModel('cube');
+            
+            // Start animation loop
+            animate();
+        }
+        
+        function loadModel(modelType) {
+            // Remove current model if exists
+            if (currentModel) {
+                scene.remove(currentModel);
+            }
+            
+            let geometry, material;
+            
+            switch(modelType) {
+                case 'cube':
+                    geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+                    material = new THREE.MeshStandardMaterial({ 
+                        color: 0x4cc9f0,
+                        metalness: 0.7,
+                        roughness: 0.2
+                    });
+                    break;
+                    
+                case 'sphere':
+                    geometry = new THREE.SphereGeometry(0.2, 32, 32);
+                    material = new THREE.MeshStandardMaterial({ 
+                        color: 0xf72585,
+                        metalness: 0.5,
+                        roughness: 0.3
+                    });
+                    break;
+                    
+                case 'torus':
+                    geometry = new THREE.TorusGeometry(0.2, 0.1, 16, 100);
+                    material = new THREE.MeshStandardMaterial({ 
+                        color: 0x4361ee,
+                        metalness: 0.6,
+                        roughness: 0.2
+                    });
+                    break;
+                    
+                case 'teapot':
+                    // Using a cone as a teapot placeholder
+                    geometry = new THREE.ConeGeometry(0.15, 0.3, 32);
+                    material = new THREE.MeshStandardMaterial({ 
+                        color: 0x4ade80,
+                        metalness: 0.4,
+                        roughness: 0.4
+                    });
+                    break;
+            }
+            
+            currentModel = new THREE.Mesh(geometry, material);
+            currentModel.visible = false;
+            
+            scene.add(currentModel);
+            statusElement.textContent = `Loaded ${modelType} model. ${isTracking ? 'Show your palm to place it.' : 'Start hand tracking to begin.'}`;
         }
         
         function toggleHandTracking() {
@@ -454,14 +540,18 @@
             
             isTracking = false;
             handDetected = false;
-            handSizeHistory = [];
             startButton.textContent = 'Start Hand Tracking';
             statusElement.textContent = 'Hand tracking stopped.';
             palmIndicator.classList.remove('visible');
             
-            // Clear canvas and remove model
+            // Clear canvas
             outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-            clearModel();
+            modelCtx.clearRect(0, 0, modelCanvas.width, modelCanvas.height);
+            
+            // Hide model
+            if (currentModel) {
+                currentModel.visible = false;
+            }
         }
         
         function onHandResults(results) {
@@ -483,182 +573,95 @@
                     drawHandLandmarks(landmarks, handedness);
                 }
                 
-                // Check if palm is facing the camera
-                const isPalmFacingCamera = checkPalmFacingCamera(landmarks, handedness);
+                // Calculate palm center and check if palm is facing camera
+                const palmCenter = calculatePalmCenter(landmarks);
+                palmFacingCamera = isPalmFacingCamera(landmarks);
                 
-                if (isPalmFacingCamera) {
-                    // Calculate position on the UPPER side of the palm
-                    const palmCenter = calculateUpperPalmPosition(landmarks);
+                lastPalmPosition = { x: palmCenter.x, y: palmCenter.y };
+                
+                // Update model position and visibility
+                if (currentModel && palmFacingCamera) {
+                    currentModel.visible = true;
                     
-                    // Calculate hand size for distance estimation
-                    const handSize = calculateHandSize(landmarks);
+                    // Position the model in 3D space based on palm position
+                    const x = (palmCenter.x / outputCanvas.width - 0.5) * 10;
+                    const y = (0.5 - palmCenter.y / outputCanvas.height) * 10;
                     
-                    // Calculate model scale based on hand size
-                    modelScale = calculateModelScale(handSize);
+                    currentModel.position.set(x, y, 0);
                     
-                    // Update model position and visibility
-                    updateModelPosition(palmCenter.x, palmCenter.y, modelScale);
+                    // Add some rotation based on hand orientation
+                    const indexBase = landmarks[5];
+                    const pinkyBase = landmarks[17];
+                    const handOrientation = Math.atan2(
+                        indexBase.y - pinkyBase.y,
+                        indexBase.x - pinkyBase.x
+                    );
                     
-                    statusElement.textContent = `Hand detected! Model is on your palm. Move hand closer/farther to scale.`;
+                    currentModel.rotation.z = -handOrientation;
+                    
+                    statusElement.textContent = 'Hand detected! Model is on your palm.';
                     palmIndicator.classList.remove('visible');
                 } else {
-                    // Hide model if palm is not facing camera
-                    clearModel();
-                    statusElement.textContent = 'Palm not facing camera. Please show your palm.';
+                    if (currentModel) {
+                        currentModel.visible = false;
+                    }
+                    statusElement.textContent = 'Palm detected. Please face your palm towards the camera.';
                     palmIndicator.classList.add('visible');
                 }
             } else {
                 handDetected = false;
-                handSizeHistory = [];
-                clearModel();
+                palmFacingCamera = false;
+                if (currentModel) {
+                    currentModel.visible = false;
+                }
                 statusElement.textContent = 'Show your palm to the camera.';
                 palmIndicator.classList.add('visible');
             }
         }
         
-        function calculateUpperPalmPosition(landmarks) {
-            // Calculate position on the UPPER side of the palm (towards fingers)
+        function calculatePalmCenter(landmarks) {
+            // Use wrist and middle finger base to calculate palm center
+            const wrist = landmarks[0]; // Wrist landmark
             const middleBase = landmarks[9]; // Middle finger MCP joint
-            const middleTip = landmarks[12]; // Middle finger tip
             
-            // Calculate direction from base to tip
-            const directionX = middleTip.x - middleBase.x;
-            const directionY = middleTip.y - middleBase.y;
+            // Calculate palm center in canvas coordinates
+            const palmX = (wrist.x + middleBase.x) / 2 * outputCanvas.width;
+            const palmY = (wrist.y + middleBase.y) / 2 * outputCanvas.height;
             
-            // Normalize the direction vector
-            const length = Math.sqrt(directionX * directionX + directionY * directionY);
-            const normalizedX = directionX / length;
-            const normalizedY = directionY / length;
-            
-            // Position the model on the upper palm (closer to fingers)
-            // Start from middle base and move 60% toward the tip
-            const modelX = middleBase.x + normalizedX * 0.6;
-            const modelY = middleBase.y + normalizedY * 0.6;
-            
-            // Convert to canvas coordinates
-            return {
-                x: modelX * outputCanvas.width,
-                y: modelY * outputCanvas.height
-            };
+            return { x: palmX, y: palmY };
         }
         
-        function checkPalmFacingCamera(landmarks, handedness) {
-            // Use finger directions to determine if palm is facing camera
+        function isPalmFacingCamera(landmarks) {
+            // Use the positions of the palm landmarks to determine if palm is facing camera
             const wrist = landmarks[0];
-            const middleBase = landmarks[9];
+            const thumbBase = landmarks[1];
             const indexBase = landmarks[5];
             const pinkyBase = landmarks[17];
             
-            // Calculate vectors from wrist to finger bases
-            const toMiddle = { x: middleBase.x - wrist.x, y: middleBase.y - wrist.y };
-            const toIndex = { x: indexBase.x - wrist.x, y: indexBase.y - wrist.y };
-            const toPinky = { x: pinkyBase.x - wrist.x, y: pinkyBase.y - wrist.y };
+            // Calculate vectors for palm orientation
+            const thumbToPinky = {
+                x: pinkyBase.x - thumbBase.x,
+                y: pinkyBase.y - thumbBase.y
+            };
             
-            // For palm facing camera, fingers should be extending away from wrist
-            // This is a simplified check - adjust thresholds as needed
-            if (toMiddle.y < -0.05 && toIndex.y < -0.05 && toPinky.y < -0.05) {
-                return true;
-            }
+            const wristToMiddle = {
+                x: landmarks[9].x - wrist.x,
+                y: landmarks[9].y - wrist.y
+            };
             
-            return false;
-        }
-        
-        function calculateHandSize(landmarks) {
-            // Calculate hand size based on distance between wrist and middle finger tip
-            const wrist = landmarks[0];
-            const middleTip = landmarks[12];
+            // Calculate the cross product to determine orientation
+            const crossProduct = (thumbToPinky.x * wristToMiddle.y) - (thumbToPinky.y * wristToMiddle.x);
             
-            // Euclidean distance in normalized coordinates
-            const distance = Math.sqrt(
-                Math.pow(wrist.x - middleTip.x, 2) + 
-                Math.pow(wrist.y - middleTip.y, 2)
-            );
+            // For a right hand, if cross product is positive, palm is facing camera
+            // For a left hand, if cross product is negative, palm is facing camera
+            // We'll use a simple heuristic based on the relative positions
+            const thumbX = thumbBase.x;
+            const pinkyX = pinkyBase.x;
             
-            // Add to history for smoothing
-            handSizeHistory.push(distance);
-            if (handSizeHistory.length > MAX_HISTORY) {
-                handSizeHistory.shift();
-            }
-            
-            // Return average of recent measurements for stability
-            return handSizeHistory.reduce((a, b) => a + b, 0) / handSizeHistory.length;
-        }
-        
-        function calculateModelScale(handSize) {
-            // Map hand size to model scale
-            const minHandSize = 0.1;
-            const maxHandSize = 0.3;
-            const minScale = 20;
-            const maxScale = 80;
-            
-            // Clamp hand size to our expected range
-            const clampedHandSize = Math.max(minHandSize, Math.min(maxHandSize, handSize));
-            
-            // Normalize to 0-1 range
-            const normalized = (clampedHandSize - minHandSize) / (maxHandSize - minHandSize);
-            
-            // Apply exponential curve for more natural scaling
-            const curved = Math.pow(normalized, 0.7);
-            
-            // Map to scale range (in pixels)
-            return minScale + curved * (maxScale - minScale);
-        }
-        
-        function updateModelPosition(x, y, scale) {
-            // Clear previous model
-            clearModel();
-            
-            // Create model element
-            currentModel = document.createElement('div');
-            currentModel.style.position = 'absolute';
-            currentModel.style.left = (x - scale/2) + 'px';
-            currentModel.style.top = (y - scale/2) + 'px';
-            currentModel.style.width = scale + 'px';
-            currentModel.style.height = scale + 'px';
-            currentModel.style.borderRadius = '50%';
-            currentModel.style.background = getModelColor();
-            currentModel.style.boxShadow = '0 0 20px rgba(255,255,255,0.5)';
-            currentModel.style.display = 'flex';
-            currentModel.style.alignItems = 'center';
-            currentModel.style.justifyContent = 'center';
-            currentModel.style.fontSize = (scale * 0.3) + 'px';
-            currentModel.style.color = 'white';
-            currentModel.style.fontWeight = 'bold';
-            currentModel.style.textShadow = '0 0 5px rgba(0,0,0,0.5)';
-            
-            // Add model icon/text based on type
-            const icon = document.createElement('div');
-            icon.textContent = getModelIcon();
-            currentModel.appendChild(icon);
-            
-            modelOverlay.appendChild(currentModel);
-        }
-        
-        function getModelColor() {
-            switch(modelType) {
-                case 'cube': return 'linear-gradient(45deg, #4cc9f0, #4361ee)';
-                case 'sphere': return 'linear-gradient(45deg, #f72585, #b5179e)';
-                case 'torus': return 'linear-gradient(45deg, #4361ee, #3a0ca3)';
-                case 'teapot': return 'linear-gradient(45deg, #4ade80, #38b000)';
-                default: return 'linear-gradient(45deg, #4cc9f0, #4361ee)';
-            }
-        }
-        
-        function getModelIcon() {
-            switch(modelType) {
-                case 'cube': return '◼️';
-                case 'sphere': return '⚪';
-                case 'torus': return '⭕';
-                case 'teapot': return '🍵';
-                default: return '◼️';
-            }
-        }
-        
-        function clearModel() {
-            if (modelOverlay) {
-                modelOverlay.innerHTML = '';
-            }
-            currentModel = null;
+            // If thumb is to the left of pinky (for right hand) or vice versa (for left hand)
+            // we can assume the palm is facing the camera
+            // This is a simplified approach - in a real application you'd want more robust detection
+            return Math.abs(crossProduct) > 0.01; // Use a threshold to determine if palm is facing camera
         }
         
         function drawHandLandmarks(landmarks, handedness) {
@@ -681,8 +684,30 @@
         }
         
         function resetModel() {
-            clearModel();
-            statusElement.textContent = 'Model reset. Show your palm to place it again.';
+            if (currentModel) {
+                currentModel.rotation.set(0, 0, 0);
+                currentModel.scale.set(1, 1, 1);
+                statusElement.textContent = 'Model reset.';
+            }
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (currentModel && currentModel.visible) {
+                // Rotate the model slowly for visual effect
+                currentModel.rotation.y += 0.01;
+                
+                // Render Three.js scene to model canvas
+                renderer.render(scene, camera);
+                
+                // Clear model canvas and draw the rendered 3D scene
+                modelCtx.clearRect(0, 0, modelCanvas.width, modelCanvas.height);
+                modelCtx.drawImage(renderer.domElement, 0, 0, modelCanvas.width, modelCanvas.height);
+            } else {
+                // Clear model canvas if no model is visible
+                modelCtx.clearRect(0, 0, modelCanvas.width, modelCanvas.height);
+            }
         }
         
         // Handle window resize
@@ -690,6 +715,12 @@
             const container = document.querySelector('.ar-container');
             outputCanvas.width = container.clientWidth;
             outputCanvas.height = container.clientHeight;
+            modelCanvas.width = container.clientWidth;
+            modelCanvas.height = container.clientHeight;
+            
+            camera.aspect = modelCanvas.width / modelCanvas.height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(modelCanvas.width, modelCanvas.height);
         });
         
         // MediaPipe Hand Connections
