@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bahubali Armour Body Tracking</title>
+    <title>Bahubali Armour Body Tracking - Fixed</title>
     <style>
         * {
             box-sizing: border-box;
@@ -77,7 +77,7 @@
             width: 100%;
             height: 100%;
             pointer-events: none;
-            opacity: 0.9;
+            opacity: 0.95;
         }
 
         .fps-counter {
@@ -183,25 +183,17 @@
             backdrop-filter: blur(10px);
         }
 
-        .angle-grid {
+        .adjustment-controls {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 8px;
+            margin-top: 10px;
         }
 
-        .angle-item {
-            background: rgba(0,0,0,0.2);
-            padding: 8px;
-            border-radius: 6px;
-            font-size: 13px;
-        }
-
-        .left-side {
-            border-left: 3px solid #2196F3;
-        }
-
-        .right-side {
-            border-left: 3px solid #FF5722;
+        .adj-btn {
+            padding: 8px 12px;
+            font-size: 12px;
+            background: rgba(100, 181, 246, 0.3);
         }
 
         @media (max-width: 1024px) {
@@ -235,7 +227,7 @@
                     <button id="stopButton">⏹ Stop Tracking</button>
                     <button id="toggleSkeleton" class="active">👤 Skeleton</button>
                     <button id="toggleConnections" class="active">🔗 Connections</button>
-                    <button id="toggle3DModel" class="active">🎭 Show Armour</button>
+                    <button id="toggle3DModel" class="active">🎭 Armour</button>
                 </div>
 
                 <div class="status-card">
@@ -246,15 +238,43 @@
                     <div style="margin-top: 8px;">
                         <span id="modelStatus" style="color: #FFA726;">Armour: Not Loaded</span>
                     </div>
-                    <div style="margin-top: 8px; font-size: 12px;">
-                        <span id="boneStatus" style="color: #64B5F6;">Bone: Searching...</span>
+                    
+                    <div class="adjustment-controls">
+                        <button class="adj-btn" onclick="adjustScale(0.1)">Scale +</button>
+                        <button class="adj-btn" onclick="adjustScale(-0.1)">Scale -</button>
+                        <button class="adj-btn" onclick="adjustOffsetY(0.1)">Move Up</button>
+                        <button class="adj-btn" onclick="adjustOffsetY(-0.1)">Move Down</button>
+                        <button class="adj-btn" onclick="adjustOffsetX(0.1)">Move Right</button>
+                        <button class="adj-btn" onclick="adjustOffsetX(-0.1)">Move Left</button>
+                        <button class="adj-btn" onclick="adjustDepth(0.5)">Closer</button>
+                        <button class="adj-btn" onclick="adjustDepth(-0.5)">Further</button>
                     </div>
                 </div>
             </div>
 
             <div class="metrics-panel">
                 <div class="metric-card">
-                    <h3>📊 Real-Time Metrics</h3>
+                    <h3>🎯 Armour Settings</h3>
+                    <div class="metric-row">
+                        <span class="metric-label">Scale</span>
+                        <span class="metric-value" id="displayScale">2.0x</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Offset X</span>
+                        <span class="metric-value" id="displayOffsetX">0.0</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Offset Y</span>
+                        <span class="metric-value" id="displayOffsetY">0.0</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Depth</span>
+                        <span class="metric-value" id="displayDepth">3.0</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <h3>📊 Body Metrics</h3>
                     <div class="metric-row">
                         <span class="metric-label">Posture</span>
                         <span class="metric-value" id="posture">--</span>
@@ -274,82 +294,30 @@
                 </div>
 
                 <div class="metric-card">
-                    <h3>🎯 Armour Position</h3>
+                    <h3>📍 Live Position</h3>
                     <div class="metric-row">
-                        <span class="metric-label">Position X</span>
-                        <span class="metric-value" id="posX">--</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Position Y</span>
-                        <span class="metric-value" id="posY">--</span>
+                        <span class="metric-label">Hip Center X</span>
+                        <span class="metric-value" id="hipX">--</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Position Z</span>
-                        <span class="metric-value" id="posZ">--</span>
+                        <span class="metric-label">Hip Center Y</span>
+                        <span class="metric-value" id="hipY">--</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Scale</span>
-                        <span class="metric-value" id="modelScale">--</span>
-                    </div>
-                </div>
-
-                <div class="metric-card">
-                    <h3>🦾 Joint Angles (Left)</h3>
-                    <div class="angle-grid">
-                        <div class="angle-item left-side">
-                            <strong>L Shoulder</strong>
-                            <div id="leftShoulder">-- °</div>
-                        </div>
-                        <div class="angle-item left-side">
-                            <strong>L Elbow</strong>
-                            <div id="leftElbow">-- °</div>
-                        </div>
-                        <div class="angle-item left-side">
-                            <strong>L Hip</strong>
-                            <div id="leftHip">-- °</div>
-                        </div>
-                        <div class="angle-item left-side">
-                            <strong>L Knee</strong>
-                            <div id="leftKnee">-- °</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="metric-card">
-                    <h3>🦾 Joint Angles (Right)</h3>
-                    <div class="angle-grid">
-                        <div class="angle-item right-side">
-                            <strong>R Shoulder</strong>
-                            <div id="rightShoulder">-- °</div>
-                        </div>
-                        <div class="angle-item right-side">
-                            <strong>R Elbow</strong>
-                            <div id="rightElbow">-- °</div>
-                        </div>
-                        <div class="angle-item right-side">
-                            <strong>R Hip</strong>
-                            <div id="rightHip">-- °</div>
-                        </div>
-                        <div class="angle-item right-side">
-                            <strong>R Knee</strong>
-                            <div id="rightKnee">-- °</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="metric-card">
-                    <h3>📏 Body Dimensions</h3>
-                    <div class="metric-row">
-                        <span class="metric-label">Arm Span</span>
-                        <span class="metric-value" id="armSpan">--</span>
+                        <span class="metric-label">Hip Center Z</span>
+                        <span class="metric-value" id="hipZ">--</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Torso Length</span>
-                        <span class="metric-value" id="torsoLength">--</span>
+                        <span class="metric-label">Model X</span>
+                        <span class="metric-value" id="modelX">--</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Leg Length</span>
-                        <span class="metric-value" id="legLength">--</span>
+                        <span class="metric-label">Model Y</span>
+                        <span class="metric-value" id="modelY">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Model Z</span>
+                        <span class="metric-value" id="modelZ">--</span>
                     </div>
                 </div>
             </div>
@@ -392,29 +360,14 @@
         let threeScene, threeCamera, threeRenderer;
         let model3D, armourBone;
         let modelLoaded = false;
-        let boneFound = false;
 
-        // Model scale (adjust this to fit your body size)
+        // Adjustable positioning parameters
         let MODEL_SCALE = 2.0;
-
-        // MediaPipe landmark indices
-        const POSE_LANDMARKS = {
-            NOSE: 0,
-            LEFT_SHOULDER: 11,
-            RIGHT_SHOULDER: 12,
-            LEFT_ELBOW: 13,
-            RIGHT_ELBOW: 14,
-            LEFT_WRIST: 15,
-            RIGHT_WRIST: 16,
-            LEFT_HIP: 23,
-            RIGHT_HIP: 24,
-            LEFT_KNEE: 25,
-            RIGHT_KNEE: 26,
-            LEFT_ANKLE: 27,
-            RIGHT_ANKLE: 28,
-            LEFT_FOOT_INDEX: 31,
-            RIGHT_FOOT_INDEX: 32
-        };
+        let OFFSET_X = 0.0;
+        let OFFSET_Y = 0.0;
+        let DEPTH_MULTIPLIER = 3.0;
+        let COORDINATE_SCALE_X = 2.0;
+        let COORDINATE_SCALE_Y = 2.0;
 
         // ==================== DOM ELEMENTS ====================
         const videoElement = document.getElementById('webcam');
@@ -432,7 +385,32 @@
         const landmarkCount = document.getElementById('landmarkCount');
         const fpsCounter = document.getElementById('fpsCounter');
         const modelStatus = document.getElementById('modelStatus');
-        const boneStatus = document.getElementById('boneStatus');
+
+        // ==================== ADJUSTMENT FUNCTIONS ====================
+        function adjustScale(delta) {
+            MODEL_SCALE = Math.max(0.1, MODEL_SCALE + delta);
+            if (model3D) model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+            document.getElementById('displayScale').textContent = MODEL_SCALE.toFixed(1) + 'x';
+            console.log('Scale:', MODEL_SCALE.toFixed(1));
+        }
+
+        function adjustOffsetX(delta) {
+            OFFSET_X += delta;
+            document.getElementById('displayOffsetX').textContent = OFFSET_X.toFixed(1);
+            console.log('Offset X:', OFFSET_X.toFixed(1));
+        }
+
+        function adjustOffsetY(delta) {
+            OFFSET_Y += delta;
+            document.getElementById('displayOffsetY').textContent = OFFSET_Y.toFixed(1);
+            console.log('Offset Y:', OFFSET_Y.toFixed(1));
+        }
+
+        function adjustDepth(delta) {
+            DEPTH_MULTIPLIER = Math.max(0.1, DEPTH_MULTIPLIER + delta);
+            document.getElementById('displayDepth').textContent = DEPTH_MULTIPLIER.toFixed(1);
+            console.log('Depth:', DEPTH_MULTIPLIER.toFixed(1));
+        }
 
         // ==================== THREE.JS INITIALIZATION ====================
         function initThreeJS() {
@@ -452,14 +430,14 @@
             threeRenderer.setSize(container.offsetWidth, container.offsetHeight);
             threeRenderer.setClearColor(0x000000, 0);
             
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
             threeScene.add(ambientLight);
             
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
             directionalLight.position.set(1, 2, 1);
             threeScene.add(directionalLight);
             
-            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight2.position.set(-1, 1, -1);
             threeScene.add(directionalLight2);
             
@@ -467,7 +445,6 @@
         }
 
         function loadGLBModel() {
-            // CHANGE THIS PATH TO YOUR GLB FILE LOCATION
             const modelPath = './armour_bahubali.glb';
             
             const loader = new THREE.GLTFLoader();
@@ -477,46 +454,29 @@
                     model3D = gltf.scene;
                     threeScene.add(model3D);
                     
-                    console.log('🔍 Searching for bones in model...');
+                    console.log('🔍 Model loaded. Searching for "Bone"...');
                     
-                    // Find the bone named 'Bone'
+                    let allBones = [];
                     model3D.traverse((object) => {
-                        console.log('Found object:', object.name, 'Type:', object.type);
-                        
                         if (object.isBone) {
-                            console.log('  → This is a BONE:', object.name);
-                            
+                            allBones.push(object.name);
                             if (object.name === 'Bone') {
                                 armourBone = object;
-                                boneFound = true;
-                                console.log('✅ Found the "Bone"!', object);
-                                boneStatus.textContent = 'Bone: ✅ Found';
-                                boneStatus.style.color = '#4CAF50';
+                                console.log('✅ Found "Bone":', object);
                             }
                         }
                     });
                     
-                    if (!boneFound) {
-                        console.warn('⚠️ Bone named "Bone" not found. Available bones:');
-                        model3D.traverse((object) => {
-                            if (object.isBone) {
-                                console.log('  Available bone:', object.name);
-                            }
-                        });
-                        boneStatus.textContent = 'Bone: ❌ Not Found';
-                        boneStatus.style.color = '#FF5252';
-                    }
+                    console.log('Available bones:', allBones);
                     
                     modelLoaded = true;
                     modelStatus.textContent = 'Armour: ✅ Loaded';
                     modelStatus.style.color = '#4CAF50';
                     
-                    console.log('✅ Bahubali Armour loaded successfully');
-                    console.log('🎯 Bone found:', boneFound ? 'Yes' : 'No');
-                    
-                    // Set initial scale
                     model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
                     model3D.position.set(0, 0, 0);
+                    
+                    console.log('✅ Armour ready. Use adjustment buttons to align.');
                 },
                 function(xhr) {
                     const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
@@ -526,7 +486,6 @@
                     console.error('❌ Error loading armour:', error);
                     modelStatus.textContent = 'Armour: ❌ Load Failed';
                     modelStatus.style.color = '#FF5252';
-                    boneStatus.textContent = 'Bone: N/A';
                 }
             );
         }
@@ -549,20 +508,6 @@
         }
 
         // ==================== UTILITY FUNCTIONS ====================
-        function calculateAngle(firstPoint, midPoint, lastPoint) {
-            const radians = Math.atan2(
-                lastPoint.y - midPoint.y,
-                lastPoint.x - midPoint.x
-            ) - Math.atan2(
-                firstPoint.y - midPoint.y,
-                firstPoint.x - midPoint.x
-            );
-            
-            let degrees = Math.abs(radians * 180.0 / Math.PI);
-            if (degrees > 180) degrees = 360 - degrees;
-            return degrees;
-        }
-
         function calculateDistance(point1, point2) {
             const dx = point2.x - point1.x;
             const dy = point2.y - point1.y;
@@ -614,25 +559,32 @@
             try {
                 const landmarks = poseLandmarks;
                 
-                // Calculate hip center (waist position)
+                // Calculate hip center (waist position) - landmarks 23 & 24
                 if (landmarks[23] && landmarks[24]) {
                     const hipMidX = (landmarks[23].x + landmarks[24].x) / 2;
                     const hipMidY = (landmarks[23].y + landmarks[24].y) / 2;
                     const hipMidZ = (landmarks[23].z + landmarks[24].z) / 2;
                     
-                    // Convert MediaPipe coordinates to Three.js coordinates
-                    const posX = -(hipMidX * 2 - 1) * 2;
-                    const posY = -(hipMidY * 2 - 1) * 2;
-                    const posZ = -hipMidZ * 3;
+                    // Update raw hip position display
+                    document.getElementById('hipX').textContent = hipMidX.toFixed(3);
+                    document.getElementById('hipY').textContent = hipMidY.toFixed(3);
+                    document.getElementById('hipZ').textContent = hipMidZ.toFixed(3);
                     
-                    // Position the entire model at hip center
+                    // Convert MediaPipe normalized coordinates [0,1] to Three.js world space
+                    // MediaPipe: 0,0 is top-left, 1,1 is bottom-right
+                    // Three.js: -1,-1 to 1,1 with center at 0,0
+                    
+                    const posX = (hipMidX - 0.5) * COORDINATE_SCALE_X + OFFSET_X;
+                    const posY = -(hipMidY - 0.5) * COORDINATE_SCALE_Y + OFFSET_Y;
+                    const posZ = -hipMidZ * DEPTH_MULTIPLIER;
+                    
+                    // Position the model
                     model3D.position.set(posX, posY, posZ);
                     
-                    // Update UI
-                    document.getElementById('posX').textContent = posX.toFixed(2);
-                    document.getElementById('posY').textContent = posY.toFixed(2);
-                    document.getElementById('posZ').textContent = posZ.toFixed(2);
-                    document.getElementById('modelScale').textContent = MODEL_SCALE.toFixed(1) + 'x';
+                    // Update display
+                    document.getElementById('modelX').textContent = posX.toFixed(2);
+                    document.getElementById('modelY').textContent = posY.toFixed(2);
+                    document.getElementById('modelZ').textContent = posZ.toFixed(2);
                 }
 
                 // Render the scene
@@ -712,8 +664,18 @@
                     ], { color: '#4CAF50', fillColor: '#4CAF50', lineWidth: 2, radius: 5 });
                 }
 
-                calculateJointAngles(landmarks);
-                calculateBodyMetrics(landmarks);
+                // Calculate metrics
+                if (landmarks[0] && landmarks[27] && landmarks[28]) {
+                    const leftHeight = calculateDistance(landmarks[0], landmarks[27]);
+                    const rightHeight = calculateDistance(landmarks[0], landmarks[28]);
+                    const avgHeight = ((leftHeight + rightHeight) / 2).toFixed(3);
+                    document.getElementById('bodyHeight').textContent = `${avgHeight} u`;
+                }
+
+                if (landmarks[11] && landmarks[12]) {
+                    const shoulderWidth = calculateDistance(landmarks[11], landmarks[12]);
+                    document.getElementById('shoulderWidth').textContent = `${shoulderWidth.toFixed(3)} u`;
+                }
 
                 const currentTimestamp = Date.now();
                 const timeDelta = currentTimestamp - previousTimestamp;
@@ -732,86 +694,6 @@
 
                 // Apply armour position
                 applyPoseToModel(landmarks);
-            }
-        }
-
-        // ==================== ANGLE CALCULATIONS ====================
-        function calculateJointAngles(landmarks) {
-            if (landmarks[11] && landmarks[13] && landmarks[15]) {
-                const leftShoulderAngle = calculateAngle(landmarks[23], landmarks[11], landmarks[13]);
-                document.getElementById('leftShoulder').innerHTML = `${Math.round(leftShoulderAngle)}°`;
-
-                const leftElbowAngle = calculateAngle(landmarks[11], landmarks[13], landmarks[15]);
-                document.getElementById('leftElbow').innerHTML = `${Math.round(leftElbowAngle)}°`;
-            }
-
-            if (landmarks[12] && landmarks[14] && landmarks[16]) {
-                const rightShoulderAngle = calculateAngle(landmarks[24], landmarks[12], landmarks[14]);
-                document.getElementById('rightShoulder').innerHTML = `${Math.round(rightShoulderAngle)}°`;
-
-                const rightElbowAngle = calculateAngle(landmarks[12], landmarks[14], landmarks[16]);
-                document.getElementById('rightElbow').innerHTML = `${Math.round(rightElbowAngle)}°`;
-            }
-
-            if (landmarks[11] && landmarks[23] && landmarks[25]) {
-                const leftHipAngle = calculateAngle(landmarks[11], landmarks[23], landmarks[25]);
-                document.getElementById('leftHip').innerHTML = `${Math.round(leftHipAngle)}°`;
-            }
-
-            if (landmarks[23] && landmarks[25] && landmarks[27]) {
-                const leftKneeAngle = calculateAngle(landmarks[23], landmarks[25], landmarks[27]);
-                document.getElementById('leftKnee').innerHTML = `${Math.round(leftKneeAngle)}°`;
-            }
-
-            if (landmarks[12] && landmarks[24] && landmarks[26]) {
-                const rightHipAngle = calculateAngle(landmarks[12], landmarks[24], landmarks[26]);
-                document.getElementById('rightHip').innerHTML = `${Math.round(rightHipAngle)}°`;
-            }
-
-            if (landmarks[24] && landmarks[26] && landmarks[28]) {
-                const rightKneeAngle = calculateAngle(landmarks[24], landmarks[26], landmarks[28]);
-                document.getElementById('rightKnee').innerHTML = `${Math.round(rightKneeAngle)}°`;
-            }
-        }
-
-        // ==================== BODY METRICS ====================
-        function calculateBodyMetrics(landmarks) {
-            if (landmarks[0] && landmarks[27] && landmarks[28]) {
-                const leftHeight = calculateDistance(landmarks[0], landmarks[27]);
-                const rightHeight = calculateDistance(landmarks[0], landmarks[28]);
-                const avgHeight = ((leftHeight + rightHeight) / 2).toFixed(3);
-                document.getElementById('bodyHeight').textContent = `${avgHeight} u`;
-            }
-
-            if (landmarks[11] && landmarks[12]) {
-                const shoulderWidth = calculateDistance(landmarks[11], landmarks[12]);
-                document.getElementById('shoulderWidth').textContent = `${shoulderWidth.toFixed(3)} u`;
-            }
-
-            if (landmarks[15] && landmarks[16]) {
-                const armSpan = calculateDistance(landmarks[15], landmarks[16]);
-                document.getElementById('armSpan').textContent = `${armSpan.toFixed(3)} u`;
-            }
-
-            if (landmarks[11] && landmarks[12] && landmarks[23] && landmarks[24]) {
-                const shoulderMidX = (landmarks[11].x + landmarks[12].x) / 2;
-                const shoulderMidY = (landmarks[11].y + landmarks[12].y) / 2;
-                const shoulderMidZ = (landmarks[11].z + landmarks[12].z) / 2;
-                const hipMidX = (landmarks[23].x + landmarks[24].x) / 2;
-                const hipMidY = (landmarks[23].y + landmarks[24].y) / 2;
-                const hipMidZ = (landmarks[23].z + landmarks[24].z) / 2;
-                const torsoLength = calculateDistance(
-                    {x: shoulderMidX, y: shoulderMidY, z: shoulderMidZ},
-                    {x: hipMidX, y: hipMidY, z: hipMidZ}
-                );
-                document.getElementById('torsoLength').textContent = `${torsoLength.toFixed(3)} u`;
-            }
-
-            if (landmarks[23] && landmarks[27] && landmarks[24] && landmarks[28]) {
-                const leftLegLength = calculateDistance(landmarks[23], landmarks[27]);
-                const rightLegLength = calculateDistance(landmarks[24], landmarks[28]);
-                const avgLegLength = ((leftLegLength + rightLegLength) / 2).toFixed(3);
-                document.getElementById('legLength').textContent = `${avgLegLength} u`;
             }
         }
 
@@ -848,7 +730,7 @@
 
                 await mediaPipeCamera.start();
                 isTracking = true;
-                statusText.textContent = '✅ Tracking Active - Armour following your waist!';
+                statusText.textContent = '✅ Tracking! Use buttons below to adjust armour position';
                 statusText.style.color = '#4CAF50';
                 
                 startButton.disabled = true;
@@ -878,13 +760,6 @@
             
             startButton.disabled = false;
             stopButton.disabled = true;
-
-            document.querySelectorAll('.metric-value').forEach(el => {
-                if (el.id !== 'landmarkCount') el.textContent = '--';
-            });
-            document.querySelectorAll('.angle-item div:not(strong)').forEach(el => {
-                el.innerHTML = '-- °';
-            });
         }
 
         function toggleSkeleton() {
@@ -910,19 +785,6 @@
         toggleConnectionsButton.addEventListener('click', toggleConnections);
         toggle3DModelButton.addEventListener('click', toggle3DModel);
 
-        // Keyboard shortcuts to adjust scale
-        window.addEventListener('keydown', (e) => {
-            if (e.key === '+' || e.key === '=') {
-                MODEL_SCALE += 0.1;
-                if (model3D) model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
-                console.log('Scale increased:', MODEL_SCALE.toFixed(1));
-            } else if (e.key === '-' || e.key === '_') {
-                MODEL_SCALE = Math.max(0.1, MODEL_SCALE - 0.1);
-                if (model3D) model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
-                console.log('Scale decreased:', MODEL_SCALE.toFixed(1));
-            }
-        });
-
         window.addEventListener('resize', () => {
             if (threeRenderer && threeCamera && threejsCanvas.parentElement) {
                 const container = threejsCanvas.parentElement;
@@ -935,8 +797,12 @@
         });
 
         window.addEventListener('load', () => {
-            statusText.textContent = '✨ Ready to wear Bahubali Armour!';
+            statusText.textContent = '✨ Ready! Start tracking and adjust armour position';
             stopButton.disabled = true;
+            document.getElementById('displayScale').textContent = MODEL_SCALE.toFixed(1) + 'x';
+            document.getElementById('displayOffsetX').textContent = OFFSET_X.toFixed(1);
+            document.getElementById('displayOffsetY').textContent = OFFSET_Y.toFixed(1);
+            document.getElementById('displayDepth').textContent = DEPTH_MULTIPLIER.toFixed(1);
             initThreeJS();
         });
 
