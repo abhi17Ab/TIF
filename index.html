@@ -6,6 +6,7 @@
   <title>3D Model Viewer - IPFS Integration with Body Tracking</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+  <!-- Updated MediaPipe script references -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -511,7 +512,7 @@
       });
       
       document.getElementById('env-hall').addEventListener('click', () => {
-        modelViewer.environmentImage = 'https://modelviewer.dev/shared-assets/environments/whipple_creek_regial_park_04_1k.hdr';
+        modelViewer.environmentImage = 'https://modelviewer.dev/shared-assets/environments/whipple_creek_regional_park_04_1k.hdr';
       });
       
       document.getElementById('env-sunset').addEventListener('click', () => {
@@ -540,22 +541,57 @@
       const statusText = document.getElementById('tracking-status-text');
       const cameraFeed = document.getElementById('camera-feed');
       
-      // Initialize MediaPipe Pose
+      // Initialize MediaPipe Pose using the correct API
       async function initializePoseDetector() {
         try {
-          poseDetector = await pose.createDetector(
-            pose.SupportedModels.BlazePose,
-            {
-              runtime: 'mediapipe',
-              modelType: 'full',
-              solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose'
+          // Use the correct MediaPipe Pose API
+          poseDetector = new Pose({
+            locateFile: (file) => {
+              return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
             }
-          );
+          });
+          
+          poseDetector.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            enableSegmentation: false,
+            smoothSegmentation: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+          });
+          
+          poseDetector.onResults(onResults);
           console.log('Pose detector initialized');
           return true;
         } catch (error) {
           console.error('Error initializing pose detector:', error);
           return false;
+        }
+      }
+      
+      // Process pose detection results
+      function onResults(results) {
+        if (!isTracking) return;
+        
+        // Draw skeleton if enabled
+        if (showSkeleton) {
+          canvasCtx.save();
+          canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+          
+          // Draw pose landmarks
+          if (results.poseLandmarks) {
+            drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, 
+                          {color: '#00FF00', lineWidth: 4});
+            drawLandmarks(canvasCtx, results.poseLandmarks, 
+                         {color: '#FF0000', lineWidth: 2});
+          }
+          
+          canvasCtx.restore();
+        }
+        
+        // Update model position based on pose
+        if (results.poseLandmarks) {
+          updateModelPosition(results.poseLandmarks);
         }
       }
       
@@ -588,11 +624,27 @@
           statusIndicator.classList.add('active');
           statusText.textContent = 'Tracking active';
           
-          // Start detection loop
-          detectPose();
+          // Start detection
+          await startDetection();
         } catch (error) {
           console.error('Error starting tracking:', error);
           alert('Could not access camera. Please ensure camera permissions are granted.');
+        }
+      }
+      
+      // Start pose detection
+      async function startDetection() {
+        if (!isTracking || !poseDetector) return;
+        
+        try {
+          await poseDetector.send({image: videoElement});
+        } catch (error) {
+          console.error('Error in detection:', error);
+        }
+        
+        // Continue detection
+        if (isTracking) {
+          requestAnimationFrame(startDetection);
         }
       }
       
@@ -611,92 +663,27 @@
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
       }
       
-      // Pose detection loop
-      async function detectPose() {
-        if (!isTracking || !poseDetector) return;
-        
-        try {
-          const poses = await poseDetector.estimatePoses(videoElement);
-          
-          if (poses.length > 0) {
-            const pose = poses[0];
-            
-            // Update 3D model position based on pose
-            updateModelPosition(pose);
-            
-            // Draw skeleton if enabled
-            if (showSkeleton) {
-              drawSkeleton(pose.keypoints);
-            }
-          } else {
-            // Clear canvas if no pose detected
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-          }
-          
-          // Continue detection
-          requestAnimationFrame(detectPose);
-        } catch (error) {
-          console.error('Error detecting pose:', error);
-          // Continue detection even if there's an error
-          requestAnimationFrame(detectPose);
-        }
-      }
-      
       // Update 3D model position based on pose
-      function updateModelPosition(pose) {
-        // This is a simplified example - in a real implementation,
-        // you would map the pose keypoints to the rig of your 3D model
-        
+      function updateModelPosition(landmarks) {
         // Get keypoints for positioning
-        const leftShoulder = pose.keypoints[11]; // MediaPipe left shoulder index
-        const rightShoulder = pose.keypoints[12]; // MediaPipe right shoulder index
+        const leftShoulder = landmarks[11]; // MediaPipe left shoulder index
+        const rightShoulder = landmarks[12]; // MediaPipe right shoulder index
         
-        if (leftShoulder && rightShoulder && leftShoulder.score > 0.5 && rightShoulder.score > 0.5) {
+        if (leftShoulder && rightShoulder) {
           // Calculate center point between shoulders
           const centerX = (leftShoulder.x + rightShoulder.x) / 2;
           const centerY = (leftShoulder.y + rightShoulder.y) / 2;
           
           // Convert 2D coordinates to 3D model position
           // This is a simplified conversion - you'd need more sophisticated mapping
-          const modelX = (centerX / videoElement.videoWidth - 0.5) * 2;
-          const modelY = -(centerY / videoElement.videoHeight - 0.5) * 2;
+          const modelX = (centerX - 0.5) * 2;
+          const modelY = -(centerY - 0.5) * 2;
           
           // Position the model (this would need to be adjusted based on your model's scale)
           // modelViewer.position = `${modelX} ${modelY} 0`;
           
           // For demonstration, we'll just log the position
           console.log(`Model position: ${modelX.toFixed(2)}, ${modelY.toFixed(2)}`);
-        }
-      }
-      
-      // Draw skeleton on canvas
-      function drawSkeleton(keypoints) {
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        canvasCtx.strokeStyle = '#44ff44';
-        canvasCtx.lineWidth = 2;
-        
-        // Draw connections between keypoints
-        const connections = pose.POSE_CONNECTIONS;
-        for (const [start, end] of connections) {
-          const startPoint = keypoints[start];
-          const endPoint = keypoints[end];
-          
-          if (startPoint.score > 0.5 && endPoint.score > 0.5) {
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(startPoint.x, startPoint.y);
-            canvasCtx.lineTo(endPoint.x, endPoint.y);
-            canvasCtx.stroke();
-          }
-        }
-        
-        // Draw keypoints
-        for (const keypoint of keypoints) {
-          if (keypoint.score > 0.5) {
-            canvasCtx.beginPath();
-            canvasCtx.arc(keypoint.x, keypoint.y, 4, 0, 2 * Math.PI);
-            canvasCtx.fillStyle = '#ff4444';
-            canvasCtx.fill();
-          }
         }
       }
       
