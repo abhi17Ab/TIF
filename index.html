@@ -57,7 +57,7 @@
             width: 100%;
             height: auto;
             display: block;
-            transform: scaleX(-1);
+            /* Removed mirror transform */
         }
 
         #output_canvas {
@@ -555,10 +555,8 @@
             // Clear canvas
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-            // Draw mirrored video
+            // Draw video WITHOUT mirroring
             canvasCtx.save();
-            canvasCtx.scale(-1, 1);
-            canvasCtx.translate(-canvasElement.width, 0);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.restore();
 
