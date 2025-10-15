@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bahubali Armour Body Tracking - Rigify</title>
+    <title>Bahubali Armour Body Tracking - Custom Rig</title>
     <style>
         /* ==================== RESET & BASE ==================== */
         * {
@@ -213,7 +213,7 @@
 </head>
 <body>
     <div class="app-container">
-        <h1>⚔️ Bahubali Armour Body Tracking - Rigify</h1>
+        <h1>⚔️ Bahubali Armour Body Tracking</h1>
 
         <div class="main-grid">
             <!-- Video Section -->
@@ -266,12 +266,12 @@
                         <span class="metric-value" id="displayScale">1.2x</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Bones Found</span>
-                        <span class="metric-value" id="displayBones">0</span>
+                        <span class="metric-label">Bones Mapped</span>
+                        <span class="metric-value" id="displayBones">0/20</span>
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Rig Type</span>
-                        <span class="metric-value" id="displayRigType">Detecting...</span>
+                        <span class="metric-value" id="displayRigType">Custom</span>
                     </div>
                 </div>
 
@@ -369,36 +369,38 @@
             }
         };
 
-        // ==================== RIGIFY BONE MAPPING ====================
+        // ==================== BONE MAPPING - UPDATED FOR YOUR MODEL ====================
         const RIGIFY_BONE_MAP = {
-            // Rigify deformation bone names (DEF- prefix)
-            hips: ['DEF-spine', 'spine'],
-            spine: ['DEF-spine.001', 'spine.001'],
-            chest: ['DEF-spine.002', 'spine.002', 'DEF-spine.003', 'spine.003'],
-            neck: ['DEF-spine.004', 'spine.004', 'DEF-spine.005', 'spine.005'],
-            head: ['DEF-spine.006', 'spine.006'],
+            // Spine and torso
+            hips: ['spine'],
+            spine: ['spine001'],
+            chest: ['spine002', 'spine003'],
+            neck: ['spine004', 'spine005'],
+            head: ['spine006'],
             
             // Left arm
-            leftShoulder: ['DEF-shoulder.L', 'shoulder.L'],
-            leftUpperArm: ['DEF-upper_arm.L', 'upper_arm.L'],
-            leftForearm: ['DEF-forearm.L', 'forearm.L'],
-            leftHand: ['DEF-hand.L', 'hand.L'],
+            leftShoulder: ['shoulderL'],
+            leftUpperArm: ['upper_armL'],
+            leftForearm: ['forearmL'],
+            leftHand: ['handL'],
             
             // Right arm
-            rightShoulder: ['DEF-shoulder.R', 'shoulder.R'],
-            rightUpperArm: ['DEF-upper_arm.R', 'upper_arm.R'],
-            rightForearm: ['DEF-forearm.R', 'forearm.R'],
-            rightHand: ['DEF-hand.R', 'hand.R'],
+            rightShoulder: ['shoulderR'],
+            rightUpperArm: ['upper_armR'],
+            rightForearm: ['forearmR'],
+            rightHand: ['handR'],
             
             // Left leg
-            leftUpLeg: ['DEF-thigh.L', 'thigh.L'],
-            leftLeg: ['DEF-shin.L', 'shin.L'],
-            leftFoot: ['DEF-foot.L', 'foot.L'],
+            leftUpLeg: ['thighL'],
+            leftLeg: ['shinL'],
+            leftFoot: ['footL'],
+            leftToe: ['toeL'],
             
             // Right leg
-            rightUpLeg: ['DEF-thigh.R', 'thigh.R'],
-            rightLeg: ['DEF-shin.R', 'shin.R'],
-            rightFoot: ['DEF-foot.R', 'foot.R']
+            rightUpLeg: ['thighR'],
+            rightLeg: ['shinR'],
+            rightFoot: ['footR'],
+            rightToe: ['toeR']
         };
 
         // ==================== MODEL SETTINGS ====================
@@ -490,7 +492,7 @@
                 this.skeleton = skeleton;
                 this.boneMap = {};
 
-                console.log('🔍 Mapping Rigify bones...');
+                console.log('🔍 Mapping bones to your custom rig...');
                 console.log('Available bones:', skeleton.bones.map(b => b.name));
 
                 for (const [key, possibleNames] of Object.entries(RIGIFY_BONE_MAP)) {
@@ -499,7 +501,7 @@
                         this.boneMap[key] = bone;
                         console.log(`✅ Mapped ${key} to ${bone.name}`);
                     } else {
-                        console.warn(`⚠️ Could not find bone for ${key}`);
+                        console.warn(`⚠️ Could not find bone for ${key}, tried: ${possibleNames.join(', ')}`);
                     }
                 }
 
@@ -589,14 +591,13 @@
                                 // Map bones
                                 const mappedCount = this.boneMapper.mapBones(this.skeleton);
                                 document.getElementById('displayBones').textContent = `${mappedCount}/${Object.keys(RIGIFY_BONE_MAP).length}`;
-                                document.getElementById('displayRigType').textContent = 'Rigify';
                                 
                                 this.updateBoneDisplay();
                             }
                         });
                         
                         this.modelLoaded = true;
-                        console.log('✅ Rigify armour loaded successfully');
+                        console.log('✅ Custom rigged armour loaded successfully');
                     },
                     onProgress,
                     (error) => {
@@ -646,19 +647,16 @@
                 return visibleCount >= 3;
             }
 
-            calculateBoneRotation(landmark1, landmark2, landmark3) {
-                // Create vectors from landmarks
-                const v1 = new THREE.Vector3(landmark1.x, landmark1.y, landmark1.z);
-                const v2 = new THREE.Vector3(landmark2.x, landmark2.y, landmark2.z);
-                const v3 = new THREE.Vector3(landmark3.x, landmark3.y, landmark3.z);
+            calculateBoneRotation(fromLandmark, toLandmark) {
+                const from = new THREE.Vector3(fromLandmark.x, -fromLandmark.y, fromLandmark.z);
+                const to = new THREE.Vector3(toLandmark.x, -toLandmark.y, toLandmark.z);
                 
-                // Calculate direction vectors
-                const dir1 = new THREE.Vector3().subVectors(v2, v1).normalize();
-                const dir2 = new THREE.Vector3().subVectors(v3, v2).normalize();
-                
-                // Calculate rotation quaternion
+                const direction = new THREE.Vector3().subVectors(to, from).normalize();
                 const quaternion = new THREE.Quaternion();
-                quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir1);
+                
+                // Create rotation from default bone direction (0, 1, 0) to target direction
+                const defaultDir = new THREE.Vector3(0, 1, 0);
+                quaternion.setFromUnitVectors(defaultDir, direction);
                 
                 return quaternion;
             }
@@ -667,9 +665,9 @@
                 if (!this.skeleton || !landmarks) return;
 
                 try {
-                    // Animate spine and torso
-                    if (this.boneMapper.hasBone('spine')) {
-                        const spineBone = this.boneMapper.getBone('spine');
+                    // Animate spine
+                    if (this.boneMapper.hasBone('hips') && landmarks[23] && landmarks[24]) {
+                        const hipBone = this.boneMapper.getBone('hips');
                         const hipCenter = {
                             x: (landmarks[23].x + landmarks[24].x) / 2,
                             y: (landmarks[23].y + landmarks[24].y) / 2,
@@ -681,45 +679,64 @@
                             z: (landmarks[11].z + landmarks[12].z) / 2
                         };
                         
-                        // Calculate spine rotation
-                        const spineRotation = this.calculateBoneRotation(hipCenter, shoulderCenter, landmarks[0]);
-                        if (spineBone) spineBone.quaternion.copy(spineRotation);
+                        const rotation = this.calculateBoneRotation(hipCenter, shoulderCenter);
+                        hipBone.quaternion.copy(rotation);
                     }
 
-                    // Animate left arm
-                    if (landmarks[11] && landmarks[13] && landmarks[15]) {
-                        if (this.boneMapper.hasBone('leftUpperArm')) {
-                            const bone = this.boneMapper.getBone('leftUpperArm');
-                            const rotation = this.calculateBoneRotation(landmarks[11], landmarks[13], landmarks[15]);
-                            bone.quaternion.copy(rotation);
-                        }
+                    // Animate left upper arm
+                    if (this.boneMapper.hasBone('leftUpperArm') && landmarks[11] && landmarks[13]) {
+                        const bone = this.boneMapper.getBone('leftUpperArm');
+                        const rotation = this.calculateBoneRotation(landmarks[11], landmarks[13]);
+                        bone.quaternion.copy(rotation);
                     }
 
-                    // Animate right arm
-                    if (landmarks[12] && landmarks[14] && landmarks[16]) {
-                        if (this.boneMapper.hasBone('rightUpperArm')) {
-                            const bone = this.boneMapper.getBone('rightUpperArm');
-                            const rotation = this.calculateBoneRotation(landmarks[12], landmarks[14], landmarks[16]);
-                            bone.quaternion.copy(rotation);
-                        }
+                    // Animate left forearm
+                    if (this.boneMapper.hasBone('leftForearm') && landmarks[13] && landmarks[15]) {
+                        const bone = this.boneMapper.getBone('leftForearm');
+                        const rotation = this.calculateBoneRotation(landmarks[13], landmarks[15]);
+                        bone.quaternion.copy(rotation);
                     }
 
-                    // Animate left leg
-                    if (landmarks[23] && landmarks[25] && landmarks[27]) {
-                        if (this.boneMapper.hasBone('leftUpLeg')) {
-                            const bone = this.boneMapper.getBone('leftUpLeg');
-                            const rotation = this.calculateBoneRotation(landmarks[23], landmarks[25], landmarks[27]);
-                            bone.quaternion.copy(rotation);
-                        }
+                    // Animate right upper arm
+                    if (this.boneMapper.hasBone('rightUpperArm') && landmarks[12] && landmarks[14]) {
+                        const bone = this.boneMapper.getBone('rightUpperArm');
+                        const rotation = this.calculateBoneRotation(landmarks[12], landmarks[14]);
+                        bone.quaternion.copy(rotation);
                     }
 
-                    // Animate right leg
-                    if (landmarks[24] && landmarks[26] && landmarks[28]) {
-                        if (this.boneMapper.hasBone('rightUpLeg')) {
-                            const bone = this.boneMapper.getBone('rightUpLeg');
-                            const rotation = this.calculateBoneRotation(landmarks[24], landmarks[26], landmarks[28]);
-                            bone.quaternion.copy(rotation);
-                        }
+                    // Animate right forearm
+                    if (this.boneMapper.hasBone('rightForearm') && landmarks[14] && landmarks[16]) {
+                        const bone = this.boneMapper.getBone('rightForearm');
+                        const rotation = this.calculateBoneRotation(landmarks[14], landmarks[16]);
+                        bone.quaternion.copy(rotation);
+                    }
+
+                    // Animate left thigh
+                    if (this.boneMapper.hasBone('leftUpLeg') && landmarks[23] && landmarks[25]) {
+                        const bone = this.boneMapper.getBone('leftUpLeg');
+                        const rotation = this.calculateBoneRotation(landmarks[23], landmarks[25]);
+                        bone.quaternion.copy(rotation);
+                    }
+
+                    // Animate left shin
+                    if (this.boneMapper.hasBone('leftLeg') && landmarks[25] && landmarks[27]) {
+                        const bone = this.boneMapper.getBone('leftLeg');
+                        const rotation = this.calculateBoneRotation(landmarks[25], landmarks[27]);
+                        bone.quaternion.copy(rotation);
+                    }
+
+                    // Animate right thigh
+                    if (this.boneMapper.hasBone('rightUpLeg') && landmarks[24] && landmarks[26]) {
+                        const bone = this.boneMapper.getBone('rightUpLeg');
+                        const rotation = this.calculateBoneRotation(landmarks[24], landmarks[26]);
+                        bone.quaternion.copy(rotation);
+                    }
+
+                    // Animate right shin
+                    if (this.boneMapper.hasBone('rightLeg') && landmarks[26] && landmarks[28]) {
+                        const bone = this.boneMapper.getBone('rightLeg');
+                        const rotation = this.calculateBoneRotation(landmarks[26], landmarks[28]);
+                        bone.quaternion.copy(rotation);
                     }
 
                 } catch (error) {
@@ -959,10 +976,6 @@
                 if (!this.appState.show3DModel) return;
 
                 const result = this.threeJSRenderer.updateModelPose(landmarks);
-                
-                if (!result || !result.visible) {
-                    // Model hidden
-                }
             }
 
             calculateDistance(point1, point2) {
@@ -1079,7 +1092,7 @@
                 this.setupEventListeners();
                 this.loadModel();
                 this.modelSettings.updateDisplay();
-                this.domManager.updateStatus('✨ Ready! Start tracking to animate the Rigify armour');
+                this.domManager.updateStatus('✨ Ready! Start tracking to animate your armour');
                 this.domManager.setButtonStates(false);
             }
 
@@ -1108,7 +1121,7 @@
 
                 const checkModel = setInterval(() => {
                     if (this.threeJSRenderer.modelLoaded) {
-                        this.domManager.updateModelStatus('Armour: ✅ Rigify Loaded', '#4CAF50');
+                        this.domManager.updateModelStatus('Armour: ✅ Loaded', '#4CAF50');
                         clearInterval(checkModel);
                     }
                 }, 100);
@@ -1120,7 +1133,7 @@
                 try {
                     await this.mediaPipeProcessor.startCamera();
                     this.appState.isTracking = true;
-                    this.domManager.updateStatus('✅ Tracking! Rigify bones animating with your body', '#4CAF50');
+                    this.domManager.updateStatus('✅ Tracking! Bones animating with your body', '#4CAF50');
                     this.domManager.setButtonStates(true);
                 } catch (error) {
                     this.domManager.updateStatus(`❌ Camera Error: ${error.message}`, '#FF5252');
@@ -1169,22 +1182,18 @@
                     );
                 }
                 this.modelSettings.updateDisplay();
-                console.log('Scale:', this.modelSettings.scale.toFixed(1));
             }
 
             adjustOffsetX(delta) {
                 this.modelSettings.offsetX += delta;
-                console.log('Offset X:', this.modelSettings.offsetX.toFixed(1));
             }
 
             adjustOffsetY(delta) {
                 this.modelSettings.offsetY += delta;
-                console.log('Offset Y:', this.modelSettings.offsetY.toFixed(1));
             }
 
             adjustDepth(delta) {
                 this.modelSettings.depthMultiplier = Math.max(0.1, this.modelSettings.depthMultiplier + delta);
-                console.log('Depth:', this.modelSettings.depthMultiplier.toFixed(1));
             }
 
             cleanup() {
