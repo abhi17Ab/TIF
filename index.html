@@ -3,49 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Body Tracking with MediaPipe</title>
+    <title>Advanced Body Tracking with MediaPipe</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
+        * {
+            box-sizing: border-box;
             margin: 0;
-            padding: 20px;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            padding: 20px;
             color: white;
+        }
+
+        .app-container {
+            max-width: 1400px;
+            margin: 0 auto;
         }
 
         h1 {
             text-align: center;
-            margin-bottom: 20px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: 25px;
+            font-size: 2.2em;
+            text-shadow: 2px 2px 6px rgba(0,0,0,0.3);
         }
 
-        .container {
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .video-section {
             display: flex;
             flex-direction: column;
-            align-items: center;
-            gap: 20px;
-            max-width: 800px;
-            width: 100%;
+            gap: 15px;
         }
 
         .video-container {
             position: relative;
             width: 100%;
-            max-width: 640px;
-            border-radius: 10px;
+            border-radius: 15px;
             overflow: hidden;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+            background: rgba(0,0,0,0.3);
         }
 
         #webcam {
             width: 100%;
             height: auto;
             display: block;
-            transform: scaleX(-1); /* Mirror the video */
+            transform: scaleX(-1);
         }
 
         #output_canvas {
@@ -56,9 +68,22 @@
             height: 100%;
         }
 
+        .fps-counter {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 18px;
+            color: #4CAF50;
+            z-index: 10;
+        }
+
         .controls {
             display: flex;
-            gap: 15px;
+            gap: 12px;
             flex-wrap: wrap;
             justify-content: center;
         }
@@ -70,77 +95,258 @@
             padding: 12px 24px;
             border-radius: 25px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 15px;
+            font-weight: 600;
             transition: all 0.3s ease;
             backdrop-filter: blur(10px);
         }
 
-        button:hover {
-            background: rgba(255,255,255,0.3);
+        button:hover:not(:disabled) {
+            background: rgba(255,255,255,0.35);
             transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         }
 
-        button:active {
-            transform: translateY(0);
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
-        .status {
-            background: rgba(0,0,0,0.3);
+        button.active {
+            background: rgba(76, 175, 80, 0.6);
+            border-color: rgba(76, 175, 80, 0.8);
+        }
+
+        .metrics-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .metric-card {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
             padding: 15px;
-            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .metric-card h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #fff;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+            padding-bottom: 8px;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            font-size: 14px;
+        }
+
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            color: rgba(255,255,255,0.8);
+        }
+
+        .metric-value {
+            font-weight: bold;
+            color: #4CAF50;
+            font-size: 15px;
+        }
+
+        .status-card {
+            background: rgba(0,0,0,0.3);
+            padding: 20px;
+            border-radius: 12px;
             text-align: center;
             backdrop-filter: blur(10px);
         }
 
-        .landmark-info {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
-            width: 100%;
-            margin-top: 20px;
+        #statusText {
+            font-size: 16px;
+            margin-bottom: 10px;
         }
 
-        .landmark-item {
-            background: rgba(255,255,255,0.1);
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 14px;
+        .angle-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .angle-item {
+            background: rgba(0,0,0,0.2);
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .left-side {
+            border-left: 3px solid #2196F3;
+        }
+
+        .right-side {
+            border-left: 3px solid #FF5722;
+        }
+
+        .visibility-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-left: 5px;
+        }
+
+        .visibility-good {
+            background: #4CAF50;
+        }
+
+        .visibility-medium {
+            background: #FFC107;
+        }
+
+        .visibility-poor {
+            background: #F44336;
+        }
+
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .metrics-panel {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            }
         }
 
         @media (max-width: 768px) {
-            .video-container {
-                max-width: 100%;
+            h1 {
+                font-size: 1.5em;
             }
             
             button {
-                padding: 10px 20px;
+                padding: 10px 18px;
                 font-size: 14px;
             }
         }
     </style>
 </head>
 <body>
-    <h1>Simple Body Tracking with MediaPipe</h1>
-    
-    <div class="container">
-        <div class="video-container">
-            <video id="webcam" autoplay muted playsinline></video>
-            <canvas id="output_canvas"></canvas>
-        </div>
+    <div class="app-container">
+        <h1>🎯 Advanced Body Tracking with MediaPipe</h1>
+        
+        <div class="main-grid">
+            <div class="video-section">
+                <div class="video-container">
+                    <video id="webcam" autoplay muted playsinline></video>
+                    <canvas id="output_canvas"></canvas>
+                    <div class="fps-counter" id="fpsCounter">FPS: 0</div>
+                </div>
 
-        <div class="controls">
-            <button id="startButton">Start Tracking</button>
-            <button id="stopButton">Stop Tracking</button>
-            <button id="toggleSkeleton">Toggle Skeleton</button>
-        </div>
+                <div class="controls">
+                    <button id="startButton">▶ Start Tracking</button>
+                    <button id="stopButton">⏹ Stop Tracking</button>
+                    <button id="toggleSkeleton" class="active">👤 Skeleton</button>
+                    <button id="toggleAngles">📐 Angles</button>
+                    <button id="toggleConnections">🔗 Connections</button>
+                </div>
 
-        <div class="status">
-            <div id="statusText">Click "Start Tracking" to begin</div>
-            <div>Pose Landmarks Detected: <span id="landmarkCount">0</span></div>
-        </div>
+                <div class="status-card">
+                    <div id="statusText">Click "Start Tracking" to begin</div>
+                    <div style="margin-top: 8px;">
+                        Landmarks: <span id="landmarkCount" style="color: #4CAF50; font-weight: bold;">0</span>/33
+                    </div>
+                </div>
+            </div>
 
-        <div class="landmark-info" id="landmarkInfo">
-            <!-- Landmark information will be populated here -->
+            <div class="metrics-panel">
+                <div class="metric-card">
+                    <h3>📊 Real-Time Metrics</h3>
+                    <div class="metric-row">
+                        <span class="metric-label">Posture</span>
+                        <span class="metric-value" id="posture">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Body Height</span>
+                        <span class="metric-value" id="bodyHeight">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Shoulder Width</span>
+                        <span class="metric-value" id="shoulderWidth">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Movement Speed</span>
+                        <span class="metric-value" id="movementSpeed">--</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <h3>🦾 Joint Angles (Left)</h3>
+                    <div class="angle-grid">
+                        <div class="angle-item left-side">
+                            <strong>L Shoulder</strong>
+                            <div id="leftShoulder">-- °</div>
+                        </div>
+                        <div class="angle-item left-side">
+                            <strong>L Elbow</strong>
+                            <div id="leftElbow">-- °</div>
+                        </div>
+                        <div class="angle-item left-side">
+                            <strong>L Hip</strong>
+                            <div id="leftHip">-- °</div>
+                        </div>
+                        <div class="angle-item left-side">
+                            <strong>L Knee</strong>
+                            <div id="leftKnee">-- °</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <h3>🦾 Joint Angles (Right)</h3>
+                    <div class="angle-grid">
+                        <div class="angle-item right-side">
+                            <strong>R Shoulder</strong>
+                            <div id="rightShoulder">-- °</div>
+                        </div>
+                        <div class="angle-item right-side">
+                            <strong>R Elbow</strong>
+                            <div id="rightElbow">-- °</div>
+                        </div>
+                        <div class="angle-item right-side">
+                            <strong>R Hip</strong>
+                            <div id="rightHip">-- °</div>
+                        </div>
+                        <div class="angle-item right-side">
+                            <strong>R Knee</strong>
+                            <div id="rightKnee">-- °</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <h3>📏 Body Dimensions</h3>
+                    <div class="metric-row">
+                        <span class="metric-label">Arm Span</span>
+                        <span class="metric-value" id="armSpan">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Torso Length</span>
+                        <span class="metric-value" id="torsoLength">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Leg Length</span>
+                        <span class="metric-value" id="legLength">--</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -151,24 +357,164 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
     <script>
-        // Global variables
+        // ==================== GLOBAL STATE ====================
         let pose = null;
         let camera = null;
         let isTracking = false;
         let showSkeleton = true;
+        let showAngles = false;
+        let showConnections = true;
 
-        // DOM elements
+        // Performance tracking
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let fps = 0;
+
+        // Movement tracking
+        let previousLandmarks = null;
+        let previousTimestamp = 0;
+
+        // ==================== DOM ELEMENTS ====================
         const videoElement = document.getElementById('webcam');
         const canvasElement = document.getElementById('output_canvas');
         const canvasCtx = canvasElement.getContext('2d');
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
         const toggleSkeletonButton = document.getElementById('toggleSkeleton');
+        const toggleAnglesButton = document.getElementById('toggleAngles');
+        const toggleConnectionsButton = document.getElementById('toggleConnections');
         const statusText = document.getElementById('statusText');
         const landmarkCount = document.getElementById('landmarkCount');
-        const landmarkInfo = document.getElementById('landmarkInfo');
+        const fpsCounter = document.getElementById('fpsCounter');
 
-        // Initialize MediaPipe Pose
+        // ==================== UTILITY FUNCTIONS ====================
+
+        /**
+         * Calculate angle between three points using atan2
+         * Returns angle in degrees (0-180)
+         */
+        function calculateAngle(firstPoint, midPoint, lastPoint) {
+            const radians = Math.atan2(
+                lastPoint.y - midPoint.y,
+                lastPoint.x - midPoint.x
+            ) - Math.atan2(
+                firstPoint.y - midPoint.y,
+                firstPoint.x - midPoint.x
+            );
+            
+            let degrees = Math.abs(radians * 180.0 / Math.PI);
+            
+            // Always return acute angle
+            if (degrees > 180) {
+                degrees = 360 - degrees;
+            }
+            
+            return degrees;
+        }
+
+        /**
+         * Calculate Euclidean distance between two points
+         */
+        function calculateDistance(point1, point2) {
+            const dx = point2.x - point1.x;
+            const dy = point2.y - point1.y;
+            const dz = (point2.z || 0) - (point1.z || 0);
+            return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        /**
+         * Calculate movement velocity between frames
+         */
+        function calculateVelocity(currentLandmarks, previousLandmarks, timeDelta) {
+            if (!previousLandmarks || timeDelta === 0) return 0;
+
+            let totalMovement = 0;
+            const keyPoints = [11, 12, 23, 24]; // Shoulders and hips
+
+            keyPoints.forEach(idx => {
+                if (currentLandmarks[idx] && previousLandmarks[idx]) {
+                    const dist = calculateDistance(
+                        currentLandmarks[idx],
+                        previousLandmarks[idx]
+                    );
+                    totalMovement += dist;
+                }
+            });
+
+            return (totalMovement / keyPoints.length) / timeDelta * 1000; // per second
+        }
+
+        /**
+         * Determine body posture based on landmark positions
+         */
+        function determinePosture(landmarks) {
+            const nose = landmarks[0];
+            const leftHip = landmarks[23];
+            const rightHip = landmarks[24];
+            const leftKnee = landmarks[25];
+            const rightKnee = landmarks[26];
+
+            if (!nose || !leftHip || !rightHip || !leftKnee || !rightKnee) {
+                return "Unknown";
+            }
+
+            const hipMidY = (leftHip.y + rightHip.y) / 2;
+            const kneeMidY = (leftKnee.y + rightKnee.y) / 2;
+            
+            // Vertical difference analysis
+            const noseToHipDist = Math.abs(nose.y - hipMidY);
+            const hipToKneeDist = Math.abs(hipMidY - kneeMidY);
+
+            if (noseToHipDist < 0.2) {
+                return "Lying Down";
+            } else if (hipToKneeDist < 0.15) {
+                return "Sitting";
+            } else if (nose.y < hipMidY && hipToKneeDist > 0.15) {
+                return "Standing";
+            } else {
+                return "Transitioning";
+            }
+        }
+
+        /**
+         * Get visibility indicator HTML
+         */
+        function getVisibilityIndicator(visibility) {
+            if (!visibility) return '';
+            
+            let className = 'visibility-poor';
+            if (visibility > 0.8) className = 'visibility-good';
+            else if (visibility > 0.5) className = 'visibility-medium';
+            
+            return `<span class="visibility-indicator ${className}"></span>`;
+        }
+
+        /**
+         * Draw angle arc and text on canvas
+         */
+        function drawAngle(ctx, midPoint, angle, color = '#FFD700') {
+            if (!showAngles) return;
+
+            const x = midPoint.x * canvasElement.width;
+            const y = midPoint.y * canvasElement.height;
+            const radius = 30;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, 2 * Math.PI);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.fillStyle = color;
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${Math.round(angle)}°`, x, y - radius - 10);
+            ctx.restore();
+        }
+
+        // ==================== MEDIAPIPE INITIALIZATION ====================
+
         function initializePose() {
             pose = new Pose({
                 locateFile: (file) => {
@@ -180,7 +526,6 @@
                 modelComplexity: 1,
                 smoothLandmarks: true,
                 enableSegmentation: false,
-                smoothSegmentation: true,
                 minDetectionConfidence: 0.5,
                 minTrackingConfidence: 0.5
             });
@@ -188,137 +533,329 @@
             pose.onResults(onPoseResults);
         }
 
-        // Process pose results
+        // ==================== POSE RESULTS PROCESSING ====================
+
         function onPoseResults(results) {
             if (!isTracking) return;
 
-            // Set canvas dimensions to match video
+            // FPS calculation
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fps = Math.round(frameCount * 1000 / (currentTime - lastTime));
+                fpsCounter.textContent = `FPS: ${fps}`;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            // Set canvas dimensions
             canvasElement.width = videoElement.videoWidth;
             canvasElement.height = videoElement.videoHeight;
 
             // Clear canvas
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-            // Draw video frame
+            // Draw mirrored video
             canvasCtx.save();
             canvasCtx.scale(-1, 1);
             canvasCtx.translate(-canvasElement.width, 0);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.restore();
 
-            // Draw pose landmarks and connections if enabled
-            if (showSkeleton && results.poseLandmarks) {
-                // Draw connections
-                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {
-                    color: '#00FF00',
-                    lineWidth: 4
-                });
+            if (results.poseLandmarks) {
+                const landmarks = results.poseLandmarks;
                 
+                // Draw connections
+                if (showConnections) {
+                    drawConnectors(canvasCtx, landmarks, POSE_CONNECTIONS, {
+                        color: '#00FF88',
+                        lineWidth: 3
+                    });
+                }
+
                 // Draw landmarks
-                drawLandmarks(canvasCtx, results.poseLandmarks, {
-                    color: '#FF0000',
-                    lineWidth: 2,
-                    radius: 3
-                });
+                if (showSkeleton) {
+                    // Left side in blue
+                    drawLandmarks(canvasCtx, [
+                        landmarks[11], landmarks[13], landmarks[15],
+                        landmarks[23], landmarks[25], landmarks[27]
+                    ], {
+                        color: '#2196F3',
+                        fillColor: '#2196F3',
+                        lineWidth: 2,
+                        radius: 5
+                    });
+
+                    // Right side in red
+                    drawLandmarks(canvasCtx, [
+                        landmarks[12], landmarks[14], landmarks[16],
+                        landmarks[24], landmarks[26], landmarks[28]
+                    ], {
+                        color: '#FF5722',
+                        fillColor: '#FF5722',
+                        lineWidth: 2,
+                        radius: 5
+                    });
+
+                    // Central landmarks in green
+                    drawLandmarks(canvasCtx, [
+                        landmarks[0], landmarks[9], landmarks[10]
+                    ], {
+                        color: '#4CAF50',
+                        fillColor: '#4CAF50',
+                        lineWidth: 2,
+                        radius: 5
+                    });
+                }
+
+                // Calculate and display joint angles
+                calculateJointAngles(landmarks);
+
+                // Calculate body metrics
+                calculateBodyMetrics(landmarks);
+
+                // Calculate movement velocity
+                const currentTimestamp = Date.now();
+                const timeDelta = currentTimestamp - previousTimestamp;
+                
+                if (previousLandmarks && timeDelta > 0) {
+                    const velocity = calculateVelocity(landmarks, previousLandmarks, timeDelta);
+                    document.getElementById('movementSpeed').textContent = 
+                        velocity.toFixed(3) + ' u/s';
+                }
+
+                previousLandmarks = JSON.parse(JSON.stringify(landmarks));
+                previousTimestamp = currentTimestamp;
+
+                // Update posture
+                const posture = determinePosture(landmarks);
+                document.getElementById('posture').textContent = posture;
 
                 // Update landmark count
-                landmarkCount.textContent = results.poseLandmarks.length;
-                
-                // Update landmark information
-                updateLandmarkInfo(results.poseLandmarks);
+                landmarkCount.textContent = landmarks.length;
             }
         }
 
-        // Update landmark information display
-        function updateLandmarkInfo(landmarks) {
-            landmarkInfo.innerHTML = '';
-            
-            // Show key landmarks
-            const keyLandmarks = [
-                { index: 0, name: 'Nose' },
-                { index: 11, name: 'Left Shoulder' },
-                { index: 12, name: 'Right Shoulder' },
-                { index: 13, name: 'Left Elbow' },
-                { index: 14, name: 'Right Elbow' },
-                { index: 15, name: 'Left Wrist' },
-                { index: 16, name: 'Right Wrist' },
-                { index: 23, name: 'Left Hip' },
-                { index: 24, name: 'Right Hip' },
-                { index: 25, name: 'Left Knee' },
-                { index: 26, name: 'Right Knee' },
-                { index: 27, name: 'Left Ankle' },
-                { index: 28, name: 'Right Ankle' }
-            ];
+        // ==================== ANGLE CALCULATIONS ====================
 
-            keyLandmarks.forEach(landmark => {
-                const point = landmarks[landmark.index];
-                if (point) {
-                    const item = document.createElement('div');
-                    item.className = 'landmark-item';
-                    item.innerHTML = `
-                        <strong>${landmark.name}</strong><br>
-                        X: ${point.x.toFixed(3)}<br>
-                        Y: ${point.y.toFixed(3)}<br>
-                        Z: ${point.z ? point.z.toFixed(3) : 'N/A'}<br>
-                        Visibility: ${point.visibility ? point.visibility.toFixed(3) : 'N/A'}
-                    `;
-                    landmarkInfo.appendChild(item);
+        function calculateJointAngles(landmarks) {
+            // Left arm angles
+            if (landmarks[11] && landmarks[13] && landmarks[15]) {
+                const leftShoulderAngle = calculateAngle(
+                    landmarks[23], // Left hip
+                    landmarks[11], // Left shoulder
+                    landmarks[13]  // Left elbow
+                );
+                document.getElementById('leftShoulder').innerHTML = 
+                    `${Math.round(leftShoulderAngle)}°`;
+                
+                if (showAngles) {
+                    drawAngle(canvasCtx, landmarks[11], leftShoulderAngle, '#2196F3');
                 }
-            });
+            }
+
+            if (landmarks[11] && landmarks[13] && landmarks[15]) {
+                const leftElbowAngle = calculateAngle(
+                    landmarks[11], // Left shoulder
+                    landmarks[13], // Left elbow
+                    landmarks[15]  // Left wrist
+                );
+                document.getElementById('leftElbow').innerHTML = 
+                    `${Math.round(leftElbowAngle)}°`;
+                
+                if (showAngles) {
+                    drawAngle(canvasCtx, landmarks[13], leftElbowAngle, '#2196F3');
+                }
+            }
+
+            // Right arm angles
+            if (landmarks[12] && landmarks[14] && landmarks[16]) {
+                const rightShoulderAngle = calculateAngle(
+                    landmarks[24], // Right hip
+                    landmarks[12], // Right shoulder
+                    landmarks[14]  // Right elbow
+                );
+                document.getElementById('rightShoulder').innerHTML = 
+                    `${Math.round(rightShoulderAngle)}°`;
+                
+                if (showAngles) {
+                    drawAngle(canvasCtx, landmarks[12], rightShoulderAngle, '#FF5722');
+                }
+            }
+
+            if (landmarks[12] && landmarks[14] && landmarks[16]) {
+                const rightElbowAngle = calculateAngle(
+                    landmarks[12], // Right shoulder
+                    landmarks[14], // Right elbow
+                    landmarks[16]  // Right wrist
+                );
+                document.getElementById('rightElbow').innerHTML = 
+                    `${Math.round(rightElbowAngle)}°`;
+                
+                if (showAngles) {
+                    drawAngle(canvasCtx, landmarks[14], rightElbowAngle, '#FF5722');
+                }
+            }
+
+            // Left leg angles
+            if (landmarks[11] && landmarks[23] && landmarks[25]) {
+                const leftHipAngle = calculateAngle(
+                    landmarks[11], // Left shoulder
+                    landmarks[23], // Left hip
+                    landmarks[25]  // Left knee
+                );
+                document.getElementById('leftHip').innerHTML = 
+                    `${Math.round(leftHipAngle)}°`;
+                
+                if (showAngles) {
+                    drawAngle(canvasCtx, landmarks[23], leftHipAngle, '#2196F3');
+                }
+            }
+
+            if (landmarks[23] && landmarks[25] && landmarks[27]) {
+                const leftKneeAngle = calculateAngle(
+                    landmarks[23], // Left hip
+                    landmarks[25], // Left knee
+                    landmarks[27]  // Left ankle
+                );
+                document.getElementById('leftKnee').innerHTML = 
+                    `${Math.round(leftKneeAngle)}°`;
+                
+                if (showAngles) {
+                    drawAngle(canvasCtx, landmarks[25], leftKneeAngle, '#2196F3');
+                }
+            }
+
+            // Right leg angles
+            if (landmarks[12] && landmarks[24] && landmarks[26]) {
+                const rightHipAngle = calculateAngle(
+                    landmarks[12], // Right shoulder
+                    landmarks[24], // Right hip
+                    landmarks[26]  // Right knee
+                );
+                document.getElementById('rightHip').innerHTML = 
+                    `${Math.round(rightHipAngle)}°`;
+                
+                if (showAngles) {
+                    drawAngle(canvasCtx, landmarks[24], rightHipAngle, '#FF5722');
+                }
+            }
+
+            if (landmarks[24] && landmarks[26] && landmarks[28]) {
+                const rightKneeAngle = calculateAngle(
+                    landmarks[24], // Right hip
+                    landmarks[26], // Right knee
+                    landmarks[28]  // Right ankle
+                );
+                document.getElementById('rightKnee').innerHTML = 
+                    `${Math.round(rightKneeAngle)}°`;
+                
+                if (showAngles) {
+                    drawAngle(canvasCtx, landmarks[26], rightKneeAngle, '#FF5722');
+                }
+            }
         }
 
-        // Start camera and tracking
+        // ==================== BODY METRICS CALCULATIONS ====================
+
+        function calculateBodyMetrics(landmarks) {
+            // Body height (nose to ankle average)
+            if (landmarks[0] && landmarks[27] && landmarks[28]) {
+                const leftHeight = calculateDistance(landmarks[0], landmarks[27]);
+                const rightHeight = calculateDistance(landmarks[0], landmarks[28]);
+                const avgHeight = ((leftHeight + rightHeight) / 2).toFixed(3);
+                document.getElementById('bodyHeight').textContent = `${avgHeight} u`;
+            }
+
+            // Shoulder width
+            if (landmarks[11] && landmarks[12]) {
+                const shoulderWidth = calculateDistance(landmarks[11], landmarks[12]);
+                document.getElementById('shoulderWidth').textContent = 
+                    `${shoulderWidth.toFixed(3)} u`;
+            }
+
+            // Arm span
+            if (landmarks[15] && landmarks[16]) {
+                const armSpan = calculateDistance(landmarks[15], landmarks[16]);
+                document.getElementById('armSpan').textContent = `${armSpan.toFixed(3)} u`;
+            }
+
+            // Torso length
+            if (landmarks[11] && landmarks[12] && landmarks[23] && landmarks[24]) {
+                const shoulderMidX = (landmarks[11].x + landmarks[12].x) / 2;
+                const shoulderMidY = (landmarks[11].y + landmarks[12].y) / 2;
+                const shoulderMidZ = (landmarks[11].z + landmarks[12].z) / 2;
+                
+                const hipMidX = (landmarks[23].x + landmarks[24].x) / 2;
+                const hipMidY = (landmarks[23].y + landmarks[24].y) / 2;
+                const hipMidZ = (landmarks[23].z + landmarks[24].z) / 2;
+                
+                const torsoLength = calculateDistance(
+                    {x: shoulderMidX, y: shoulderMidY, z: shoulderMidZ},
+                    {x: hipMidX, y: hipMidY, z: hipMidZ}
+                );
+                document.getElementById('torsoLength').textContent = 
+                    `${torsoLength.toFixed(3)} u`;
+            }
+
+            // Leg length (average)
+            if (landmarks[23] && landmarks[27] && landmarks[24] && landmarks[28]) {
+                const leftLegLength = calculateDistance(landmarks[23], landmarks[27]);
+                const rightLegLength = calculateDistance(landmarks[24], landmarks[28]);
+                const avgLegLength = ((leftLegLength + rightLegLength) / 2).toFixed(3);
+                document.getElementById('legLength').textContent = `${avgLegLength} u`;
+            }
+        }
+
+        // ==================== CAMERA CONTROL ====================
+
         async function startTracking() {
             if (isTracking) return;
 
             try {
-                // Initialize pose if not already done
                 if (!pose) {
                     initializePose();
                 }
 
-                // Get camera stream
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { 
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
                         facingMode: 'user'
                     }
                 });
 
                 videoElement.srcObject = stream;
 
-                // Wait for video to be ready
                 await new Promise((resolve) => {
-                    videoElement.onloadedmetadata = () => {
-                        resolve();
-                    };
+                    videoElement.onloadedmetadata = () => resolve();
                 });
 
-                // Start camera
                 camera = new Camera(videoElement, {
                     onFrame: async () => {
                         if (isTracking) {
                             await pose.send({ image: videoElement });
                         }
                     },
-                    width: 640,
-                    height: 480
+                    width: 1280,
+                    height: 720
                 });
 
                 await camera.start();
                 isTracking = true;
-                statusText.textContent = 'Tracking active - Move around to see body tracking!';
+                statusText.textContent = '✅ Tracking Active - Move to see real-time analysis!';
                 statusText.style.color = '#4CAF50';
+                
+                startButton.disabled = true;
+                stopButton.disabled = false;
 
             } catch (error) {
                 console.error('Error starting tracking:', error);
-                statusText.textContent = 'Error: Could not access camera. Please check permissions.';
+                statusText.textContent = '❌ Camera Error: ' + error.message;
                 statusText.style.color = '#FF5252';
             }
         }
 
-        // Stop tracking
         function stopTracking() {
             isTracking = false;
             
@@ -328,30 +865,62 @@
             
             if (videoElement.srcObject) {
                 videoElement.srcObject.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
             }
             
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            statusText.textContent = 'Tracking stopped';
+            statusText.textContent = '⏸ Tracking Stopped';
             statusText.style.color = '#FFA726';
             landmarkCount.textContent = '0';
-            landmarkInfo.innerHTML = '';
+            fpsCounter.textContent = 'FPS: 0';
+            
+            startButton.disabled = false;
+            stopButton.disabled = true;
+
+            // Reset metrics
+            document.querySelectorAll('.metric-value').forEach(el => {
+                if (el.id !== 'landmarkCount') el.textContent = '--';
+            });
+            document.querySelectorAll('.angle-item div:not(strong)').forEach(el => {
+                el.innerHTML = '-- °';
+            });
         }
 
-        // Toggle skeleton visibility
         function toggleSkeleton() {
             showSkeleton = !showSkeleton;
-            toggleSkeletonButton.textContent = showSkeleton ? 
-                'Hide Skeleton' : 'Show Skeleton';
+            toggleSkeletonButton.classList.toggle('active');
         }
 
-        // Event listeners
+        function toggleAngles() {
+            showAngles = !showAngles;
+            toggleAnglesButton.classList.toggle('active');
+        }
+
+        function toggleConnections() {
+            showConnections = !showConnections;
+            toggleConnectionsButton.classList.toggle('active');
+        }
+
+        // ==================== EVENT LISTENERS ====================
+
         startButton.addEventListener('click', startTracking);
         stopButton.addEventListener('click', stopTracking);
         toggleSkeletonButton.addEventListener('click', toggleSkeleton);
+        toggleAnglesButton.addEventListener('click', toggleAngles);
+        toggleConnectionsButton.addEventListener('click', toggleConnections);
 
-        // Initialize on load
+        // Initialize button states
         window.addEventListener('load', () => {
-            statusText.textContent = 'Ready to start body tracking';
+            statusText.textContent = '✨ Ready to start advanced body tracking';
+            stopButton.disabled = true;
+            toggleConnectionsButton.classList.add('active');
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (isTracking) {
+                stopTracking();
+            }
         });
     </script>
 </body>
