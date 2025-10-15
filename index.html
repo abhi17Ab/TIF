@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bahubali Armour Body Tracking - Fixed</title>
+    <title>Bahubali Armour Body Tracking</title>
     <style>
+        /* ==================== RESET & BASE ==================== */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -20,6 +21,7 @@
             overflow-x: hidden;
         }
 
+        /* ==================== LAYOUT ==================== */
         .app-container {
             max-width: 1400px;
             margin: 0 auto;
@@ -30,7 +32,7 @@
             text-align: center;
             margin-bottom: 25px;
             font-size: 2.2em;
-            text-shadow: 2px 2px 6px rgba(0,0,0,0.3);
+            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.3);
         }
 
         .main-grid {
@@ -40,6 +42,7 @@
             margin-bottom: 20px;
         }
 
+        /* ==================== VIDEO SECTION ==================== */
         .video-section {
             display: flex;
             flex-direction: column;
@@ -51,8 +54,8 @@
             width: 100%;
             border-radius: 15px;
             overflow: hidden;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-            background: rgba(0,0,0,0.3);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            background: rgba(0, 0, 0, 0.3);
         }
 
         #webcam {
@@ -61,7 +64,8 @@
             display: block;
         }
 
-        #output_canvas {
+        #output_canvas,
+        #threejs_canvas {
             position: absolute;
             top: 0;
             left: 0;
@@ -71,12 +75,6 @@
         }
 
         #threejs_canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
             opacity: 0.95;
         }
 
@@ -84,7 +82,7 @@
             position: absolute;
             top: 15px;
             right: 15px;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0, 0, 0, 0.7);
             padding: 10px 15px;
             border-radius: 8px;
             font-weight: bold;
@@ -93,6 +91,7 @@
             z-index: 10;
         }
 
+        /* ==================== CONTROLS ==================== */
         .controls {
             display: flex;
             gap: 12px;
@@ -101,9 +100,9 @@
         }
 
         button {
-            background: rgba(255,255,255,0.2);
+            background: rgba(255, 255, 255, 0.2);
             color: white;
-            border: 2px solid rgba(255,255,255,0.3);
+            border: 2px solid rgba(255, 255, 255, 0.3);
             padding: 12px 24px;
             border-radius: 25px;
             cursor: pointer;
@@ -114,9 +113,9 @@
         }
 
         button:hover:not(:disabled) {
-            background: rgba(255,255,255,0.35);
+            background: rgba(255, 255, 255, 0.35);
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
 
         button:disabled {
@@ -129,6 +128,7 @@
             border-color: rgba(76, 175, 80, 0.8);
         }
 
+        /* ==================== METRICS PANEL ==================== */
         .metrics-panel {
             display: flex;
             flex-direction: column;
@@ -138,18 +138,18 @@
         }
 
         .metric-card {
-            background: rgba(255,255,255,0.15);
+            background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(10px);
             border-radius: 12px;
             padding: 15px;
-            border: 1px solid rgba(255,255,255,0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .metric-card h3 {
             font-size: 16px;
             margin-bottom: 12px;
             color: #fff;
-            border-bottom: 2px solid rgba(255,255,255,0.3);
+            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
             padding-bottom: 8px;
         }
 
@@ -157,7 +157,7 @@
             display: flex;
             justify-content: space-between;
             padding: 8px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             font-size: 14px;
         }
 
@@ -166,7 +166,7 @@
         }
 
         .metric-label {
-            color: rgba(255,255,255,0.8);
+            color: rgba(255, 255, 255, 0.8);
         }
 
         .metric-value {
@@ -176,13 +176,14 @@
         }
 
         .status-card {
-            background: rgba(0,0,0,0.3);
+            background: rgba(0, 0, 0, 0.3);
             padding: 20px;
             border-radius: 12px;
             text-align: center;
             backdrop-filter: blur(10px);
         }
 
+        /* ==================== ADJUSTMENT CONTROLS ==================== */
         .adjustment-controls {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -196,11 +197,12 @@
             background: rgba(100, 181, 246, 0.3);
         }
 
+        /* ==================== RESPONSIVE ==================== */
         @media (max-width: 1024px) {
             .main-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .metrics-panel {
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -212,8 +214,9 @@
 <body>
     <div class="app-container">
         <h1>⚔️ Bahubali Armour Body Tracking</h1>
-        
+
         <div class="main-grid">
+            <!-- Video Section -->
             <div class="video-section">
                 <div class="video-container">
                     <video id="webcam" autoplay muted playsinline></video>
@@ -222,6 +225,7 @@
                     <div class="fps-counter" id="fpsCounter">FPS: 0</div>
                 </div>
 
+                <!-- Control Buttons -->
                 <div class="controls">
                     <button id="startButton">▶ Start Tracking</button>
                     <button id="stopButton">⏹ Stop Tracking</button>
@@ -230,6 +234,7 @@
                     <button id="toggle3DModel" class="active">🎭 Armour</button>
                 </div>
 
+                <!-- Status Card -->
                 <div class="status-card">
                     <div id="statusText">Click "Start Tracking" to wear the armour</div>
                     <div style="margin-top: 8px;">
@@ -238,26 +243,27 @@
                     <div style="margin-top: 8px;">
                         <span id="modelStatus" style="color: #FFA726;">Armour: Not Loaded</span>
                     </div>
-                    
+
                     <div class="adjustment-controls">
-                        <button class="adj-btn" onclick="adjustScale(0.1)">Scale +</button>
-                        <button class="adj-btn" onclick="adjustScale(-0.1)">Scale -</button>
-                        <button class="adj-btn" onclick="adjustOffsetY(0.1)">Move Up</button>
-                        <button class="adj-btn" onclick="adjustOffsetY(-0.1)">Move Down</button>
-                        <button class="adj-btn" onclick="adjustOffsetX(0.1)">Move Right</button>
-                        <button class="adj-btn" onclick="adjustOffsetX(-0.1)">Move Left</button>
-                        <button class="adj-btn" onclick="adjustDepth(0.5)">Closer</button>
-                        <button class="adj-btn" onclick="adjustDepth(-0.5)">Further</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustScale(0.1)">Scale +</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustScale(-0.1)">Scale -</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustOffsetY(0.1)">Move Up</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustOffsetY(-0.1)">Move Down</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustOffsetX(0.1)">Move Right</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustOffsetX(-0.1)">Move Left</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustDepth(0.5)">Closer</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustDepth(-0.5)">Further</button>
                     </div>
                 </div>
             </div>
 
+            <!-- Metrics Panel -->
             <div class="metrics-panel">
                 <div class="metric-card">
                     <h3>🎯 Armour Settings</h3>
                     <div class="metric-row">
                         <span class="metric-label">Scale</span>
-                        <span class="metric-value" id="displayScale">2.0x</span>
+                        <span class="metric-value" id="displayScale">0.8x</span>
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Offset X</span>
@@ -265,11 +271,11 @@
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Offset Y</span>
-                        <span class="metric-value" id="displayOffsetY">0.0</span>
+                        <span class="metric-value" id="displayOffsetY">-0.2</span>
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Depth</span>
-                        <span class="metric-value" id="displayDepth">3.0</span>
+                        <span class="metric-value" id="displayDepth">5.0</span>
                     </div>
                 </div>
 
@@ -324,584 +330,704 @@
         </div>
     </div>
 
-    <!-- Three.js Library -->
+    <!-- External Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-
-    <!-- MediaPipe Pose -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
 
     <script>
-   // ==================== GLOBAL STATE ====================
-let pose = null;
-let mediaPipeCamera = null;
-let isTracking = false;
-let showSkeleton = true;
-let showConnections = true;
-let show3DModel = true;
+        'use strict';
 
-// Performance tracking
-let frameCount = 0;
-let lastTime = performance.now();
-let fps = 0;
-
-// Movement tracking
-let previousLandmarks = null;
-let previousTimestamp = 0;
-
-// Landmark smoothing
-let smoothedLandmarks = null;
-const SMOOTHING_FACTOR = 0.7;
-
-// ==================== THREE.JS SETUP ====================
-let threeScene, threeCamera, threeRenderer;
-let model3D, armourBone;
-let modelLoaded = false;
-
-// Adjustable positioning parameters
-let MODEL_SCALE = 0.8;
-let OFFSET_X = 0.0;
-let OFFSET_Y = -0.2;
-let DEPTH_MULTIPLIER = 5.0;
-let COORDINATE_SCALE_X = 2.5;
-let COORDINATE_SCALE_Y = 2.5;
-
-// Body proportions for scaling
-let bodyScale = 1.0;
-let torsoLength = 1.0;
-
-// ==================== DOM ELEMENTS ====================
-const videoElement = document.getElementById('webcam');
-const canvasElement = document.getElementById('output_canvas');
-const canvasCtx = canvasElement.getContext('2d');
-const threejsCanvas = document.getElementById('threejs_canvas');
-
-const startButton = document.getElementById('startButton');
-const stopButton = document.getElementById('stopButton');
-const toggleSkeletonButton = document.getElementById('toggleSkeleton');
-const toggleConnectionsButton = document.getElementById('toggleConnections');
-const toggle3DModelButton = document.getElementById('toggle3DModel');
-
-const statusText = document.getElementById('statusText');
-const landmarkCount = document.getElementById('landmarkCount');
-const fpsCounter = document.getElementById('fpsCounter');
-const modelStatus = document.getElementById('modelStatus');
-
-// ==================== ADJUSTMENT FUNCTIONS ====================
-function adjustScale(delta) {
-    MODEL_SCALE = Math.max(0.1, MODEL_SCALE + delta);
-    if (model3D) model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
-    document.getElementById('displayScale').textContent = MODEL_SCALE.toFixed(1) + 'x';
-    console.log('Scale:', MODEL_SCALE.toFixed(1));
-}
-
-function adjustOffsetX(delta) {
-    OFFSET_X += delta;
-    document.getElementById('displayOffsetX').textContent = OFFSET_X.toFixed(1);
-    console.log('Offset X:', OFFSET_X.toFixed(1));
-}
-
-function adjustOffsetY(delta) {
-    OFFSET_Y += delta;
-    document.getElementById('displayOffsetY').textContent = OFFSET_Y.toFixed(1);
-    console.log('Offset Y:', OFFSET_Y.toFixed(1));
-}
-
-function adjustDepth(delta) {
-    DEPTH_MULTIPLIER = Math.max(0.1, DEPTH_MULTIPLIER + delta);
-    document.getElementById('displayDepth').textContent = DEPTH_MULTIPLIER.toFixed(1);
-    console.log('Depth:', DEPTH_MULTIPLIER.toFixed(1));
-}
-
-// ==================== THREE.JS INITIALIZATION ====================
-function initThreeJS() {
-    threeScene = new THREE.Scene();
-    
-    const container = threejsCanvas.parentElement;
-    const aspect = container.offsetWidth / container.offsetHeight;
-    threeCamera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
-    threeCamera.position.set(0, 0, 5);
-    threeCamera.lookAt(0, 0, 0);
-    
-    threeRenderer = new THREE.WebGLRenderer({ 
-        canvas: threejsCanvas,
-        alpha: true,
-        antialias: true 
-    });
-    threeRenderer.setSize(container.offsetWidth, container.offsetHeight);
-    threeRenderer.setClearColor(0x000000, 0);
-    
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
-    threeScene.add(ambientLight);
-    
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    directionalLight.position.set(1, 2, 1);
-    threeScene.add(directionalLight);
-    
-    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight2.position.set(-1, 1, -1);
-    threeScene.add(directionalLight2);
-    
-    loadGLBModel();
-}
-
-function loadGLBModel() {
-    const modelPath = './armour_bahubali.glb';
-    
-    const loader = new THREE.GLTFLoader();
-    loader.load(
-        modelPath,
-        function(gltf) {
-            model3D = gltf.scene;
-            threeScene.add(model3D);
-            
-            console.log('🔍 Model loaded. Searching for bones...');
-            
-            let allBones = [];
-            model3D.traverse((object) => {
-                if (object.isBone) {
-                    allBones.push(object.name);
-                    console.log('Found bone:', object.name);
-                }
-            });
-            
-            console.log('Available bones:', allBones);
-            
-            modelLoaded = true;
-            modelStatus.textContent = 'Armour: ✅ Loaded';
-            modelStatus.style.color = '#4CAF50';
-            
-            model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
-            model3D.position.set(0, 0, 0);
-            
-            console.log('✅ Armour ready. Use adjustment buttons to align.');
-        },
-        function(xhr) {
-            const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
-            modelStatus.textContent = `Armour: Loading ${percent}%`;
-        },
-        function(error) {
-            console.error('❌ Error loading armour:', error);
-            modelStatus.textContent = 'Armour: ❌ Load Failed';
-            modelStatus.style.color = '#FF5252';
-            
-            // Create a placeholder cube for testing
-            const geometry = new THREE.BoxGeometry(1, 2, 0.5);
-            const material = new THREE.MeshPhongMaterial({ 
-                color: 0x8B4513,
-                transparent: true,
-                opacity: 0.8
-            });
-            model3D = new THREE.Mesh(geometry, material);
-            threeScene.add(model3D);
-            modelLoaded = true;
-            modelStatus.textContent = 'Armour: Using Placeholder';
-            modelStatus.style.color = '#FFA726';
+        // ==================== APPLICATION STATE ====================
+        class AppState {
+            constructor() {
+                this.isTracking = false;
+                this.showSkeleton = true;
+                this.showConnections = true;
+                this.show3DModel = true;
+                this.frameCount = 0;
+                this.lastTime = performance.now();
+                this.fps = 0;
+                this.previousLandmarks = null;
+                this.previousTimestamp = 0;
+                this.smoothedLandmarks = null;
+            }
         }
-    );
-}
 
-// ==================== BODY PROPORTION CALCULATIONS ====================
-function calculateBodyProportions(landmarks) {
-    if (!landmarks[11] || !landmarks[12] || !landmarks[23] || !landmarks[24]) {
-        return { scale: 1.0, torsoLength: 1.0 };
-    }
-    
-    // Calculate shoulder width
-    const shoulderWidth = Math.abs(landmarks[11].x - landmarks[12].x);
-    
-    // Calculate torso length (shoulders to hips)
-    const leftShoulder = landmarks[11];
-    const rightShoulder = landmarks[12];
-    const leftHip = landmarks[23];
-    const rightHip = landmarks[24];
-    
-    const shoulderCenter = {
-        x: (leftShoulder.x + rightShoulder.x) / 2,
-        y: (leftShoulder.y + rightShoulder.y) / 2,
-        z: (leftShoulder.z + rightShoulder.z) / 2
-    };
-    
-    const hipCenter = {
-        x: (leftHip.x + rightHip.x) / 2,
-        y: (leftHip.y + rightHip.y) / 2,
-        z: (leftHip.z + rightHip.z) / 2
-    };
-    
-    const torsoLength = Math.sqrt(
-        Math.pow(shoulderCenter.x - hipCenter.x, 2) +
-        Math.pow(shoulderCenter.y - hipCenter.y, 2) +
-        Math.pow(shoulderCenter.z - hipCenter.z, 2)
-    );
-    
-    // Calculate scale based on torso proportions
-    const scale = Math.max(0.5, Math.min(2.0, torsoLength * 8));
-    
-    return { scale, torsoLength };
-}
-
-// ==================== LANDMARK SMOOTHING ====================
-function smoothLandmarks(currentLandmarks, previousLandmarks, factor) {
-    if (!previousLandmarks) return currentLandmarks;
-    
-    return currentLandmarks.map((landmark, index) => {
-        const prev = previousLandmarks[index];
-        if (!prev) return landmark;
-        
-        return {
-            x: prev.x + (landmark.x - prev.x) * (1 - factor),
-            y: prev.y + (landmark.y - prev.y) * (1 - factor),
-            z: prev.z + (landmark.z - prev.z) * (1 - factor),
-            visibility: landmark.visibility
+        // ==================== CONSTANTS ====================
+        const CONFIG = {
+            SMOOTHING_FACTOR: 0.7,
+            VIDEO_WIDTH: 1280,
+            VIDEO_HEIGHT: 720,
+            MODEL_PATH: './armour_bahubali.glb',
+            MEDIAPIPE_OPTIONS: {
+                modelComplexity: 1,
+                smoothLandmarks: true,
+                enableSegmentation: false,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7
+            }
         };
-    });
-}
 
-// ==================== UTILITY FUNCTIONS ====================
-function calculateDistance(point1, point2) {
-    const dx = point2.x - point1.x;
-    const dy = point2.y - point1.y;
-    const dz = (point2.z || 0) - (point1.z || 0);
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-function calculateVelocity(currentLandmarks, previousLandmarks, timeDelta) {
-    if (!previousLandmarks || timeDelta === 0) return 0;
-    let totalMovement = 0;
-    const keyPoints = [11, 12, 23, 24];
-    keyPoints.forEach(idx => {
-        if (currentLandmarks[idx] && previousLandmarks[idx]) {
-            totalMovement += calculateDistance(
-                currentLandmarks[idx],
-                previousLandmarks[idx]
-            );
-        }
-    });
-    return (totalMovement / keyPoints.length) / timeDelta * 1000;
-}
-
-function determinePosture(landmarks) {
-    const nose = landmarks[0];
-    const leftHip = landmarks[23];
-    const rightHip = landmarks[24];
-    const leftKnee = landmarks[25];
-    const rightKnee = landmarks[26];
-
-    if (!nose || !leftHip || !rightHip || !leftKnee || !rightKnee) {
-        return "Unknown";
-    }
-
-    const hipMidY = (leftHip.y + rightHip.y) / 2;
-    const kneeMidY = (leftKnee.y + rightKnee.y) / 2;
-    const noseToHipDist = Math.abs(nose.y - hipMidY);
-    const hipToKneeDist = Math.abs(hipMidY - kneeMidY);
-
-    if (noseToHipDist < 0.2) return "Lying Down";
-    else if (hipToKneeDist < 0.15) return "Sitting";
-    else if (nose.y < hipMidY && hipToKneeDist > 0.15) return "Standing";
-    else return "Transitioning";
-}
-
-// ==================== APPLY POSE TO ARMOUR ====================
-function applyPoseToModel(poseLandmarks) {
-    if (!modelLoaded || !model3D || !poseLandmarks || !show3DModel) return;
-    
-    try {
-        const landmarks = poseLandmarks;
-        
-        // Calculate body center using multiple points for better stability
-        const keyPoints = [11, 12, 23, 24]; // shoulders and hips
-        let centerX = 0, centerY = 0, centerZ = 0;
-        let validPoints = 0;
-        
-        keyPoints.forEach(idx => {
-            if (landmarks[idx]) {
-                centerX += landmarks[idx].x;
-                centerY += landmarks[idx].y;
-                centerZ += landmarks[idx].z;
-                validPoints++;
+        // ==================== MODEL SETTINGS ====================
+        class ModelSettings {
+            constructor() {
+                this.scale = 0.8;
+                this.offsetX = 0.0;
+                this.offsetY = -0.2;
+                this.depthMultiplier = 5.0;
+                this.coordinateScaleX = 2.5;
+                this.coordinateScaleY = 2.5;
+                this.bodyScale = 1.0;
+                this.torsoLength = 1.0;
             }
-        });
-        
-        if (validPoints === 0) return;
-        
-        centerX /= validPoints;
-        centerY /= validPoints;
-        centerZ /= validPoints;
-        
-        // Calculate body proportions for dynamic scaling
-        const proportions = calculateBodyProportions(landmarks);
-        bodyScale = proportions.scale;
-        torsoLength = proportions.torsoLength;
-        
-        // Update raw body position display
-        document.getElementById('hipX').textContent = centerX.toFixed(3);
-        document.getElementById('hipY').textContent = centerY.toFixed(3);
-        document.getElementById('hipZ').textContent = centerZ.toFixed(3);
-        
-        // Convert MediaPipe normalized coordinates to Three.js world space
-        // Flip Y axis (MediaPipe: 0 at top, Three.js: 0 at center)
-        const posX = (centerX - 0.5) * COORDINATE_SCALE_X + OFFSET_X;
-        const posY = -(centerY - 0.5) * COORDINATE_SCALE_Y + OFFSET_Y;
-        const posZ = -centerZ * DEPTH_MULTIPLIER;
-        
-        // Apply dynamic scaling based on body proportions
-        const finalScale = MODEL_SCALE * bodyScale;
-        model3D.scale.set(finalScale, finalScale, finalScale);
-        
-        // Position the model
-        model3D.position.set(posX, posY, posZ);
-        
-        // Calculate rotation based on shoulder orientation
-        if (landmarks[11] && landmarks[12]) {
-            const leftShoulder = landmarks[11];
-            const rightShoulder = landmarks[12];
-            
-            // Calculate angle between shoulders for rotation
-            const shoulderAngle = Math.atan2(
-                rightShoulder.y - leftShoulder.y,
-                rightShoulder.x - leftShoulder.x
-            );
-            
-            // Apply rotation to make armour face forward
-            model3D.rotation.y = -shoulderAngle + Math.PI / 2;
-        }
-        
-        // Update display
-        document.getElementById('modelX').textContent = posX.toFixed(2);
-        document.getElementById('modelY').textContent = posY.toFixed(2);
-        document.getElementById('modelZ').textContent = posZ.toFixed(2);
-        
-        // Update scale display to show final scale
-        document.getElementById('displayScale').textContent = finalScale.toFixed(1) + 'x';
 
-        // Render the scene
-        threeRenderer.render(threeScene, threeCamera);
-        
-    } catch (error) {
-        console.error('Error applying pose to armour:', error);
-    }
-}
-
-// ==================== MEDIAPIPE ====================
-function initializePose() {
-    pose = new Pose({
-        locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-        }
-    });
-
-    pose.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        enableSegmentation: false,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.7
-    });
-
-    pose.onResults(onPoseResults);
-}
-
-function onPoseResults(results) {
-    if (!isTracking) return;
-
-    frameCount++;
-    const currentTime = performance.now();
-    if (currentTime - lastTime >= 1000) {
-        fps = Math.round(frameCount * 1000 / (currentTime - lastTime));
-        fpsCounter.textContent = `FPS: ${fps}`;
-        frameCount = 0;
-        lastTime = currentTime;
-    }
-
-    canvasElement.width = videoElement.videoWidth;
-    canvasElement.height = videoElement.videoHeight;
-    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-    canvasCtx.save();
-    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-    canvasCtx.restore();
-
-    if (results.poseLandmarks) {
-        const landmarks = smoothLandmarks(
-            results.poseLandmarks, 
-            smoothedLandmarks, 
-            SMOOTHING_FACTOR
-        );
-        smoothedLandmarks = landmarks;
-        
-        if (showConnections) {
-            drawConnectors(canvasCtx, landmarks, POSE_CONNECTIONS, {
-                color: '#00FF88',
-                lineWidth: 3
-            });
-        }
-
-        if (showSkeleton) {
-            drawLandmarks(canvasCtx, [
-                landmarks[11], landmarks[13], landmarks[15],
-                landmarks[23], landmarks[25], landmarks[27]
-            ], { color: '#2196F3', fillColor: '#2196F3', lineWidth: 2, radius: 5 });
-
-            drawLandmarks(canvasCtx, [
-                landmarks[12], landmarks[14], landmarks[16],
-                landmarks[24], landmarks[26], landmarks[28]
-            ], { color: '#FF5722', fillColor: '#FF5722', lineWidth: 2, radius: 5 });
-
-            drawLandmarks(canvasCtx, [
-                landmarks[0], landmarks[9], landmarks[10]
-            ], { color: '#4CAF50', fillColor: '#4CAF50', lineWidth: 2, radius: 5 });
-        }
-
-        // Calculate metrics
-        if (landmarks[0] && landmarks[27] && landmarks[28]) {
-            const leftHeight = calculateDistance(landmarks[0], landmarks[27]);
-            const rightHeight = calculateDistance(landmarks[0], landmarks[28]);
-            const avgHeight = ((leftHeight + rightHeight) / 2).toFixed(3);
-            document.getElementById('bodyHeight').textContent = `${avgHeight} u`;
-        }
-
-        if (landmarks[11] && landmarks[12]) {
-            const shoulderWidth = calculateDistance(landmarks[11], landmarks[12]);
-            document.getElementById('shoulderWidth').textContent = `${shoulderWidth.toFixed(3)} u`;
-        }
-
-        const currentTimestamp = Date.now();
-        const timeDelta = currentTimestamp - previousTimestamp;
-        
-        if (previousLandmarks && timeDelta > 0) {
-            const velocity = calculateVelocity(landmarks, previousLandmarks, timeDelta);
-            document.getElementById('movementSpeed').textContent = velocity.toFixed(3) + ' u/s';
-        }
-
-        previousLandmarks = JSON.parse(JSON.stringify(landmarks));
-        previousTimestamp = currentTimestamp;
-
-        const posture = determinePosture(landmarks);
-        document.getElementById('posture').textContent = posture;
-        landmarkCount.textContent = landmarks.length;
-
-        // Apply armour position
-        applyPoseToModel(landmarks);
-    } else {
-        landmarkCount.textContent = '0';
-    }
-}
-
-// ==================== CAMERA CONTROL ====================
-async function startTracking() {
-    if (isTracking) return;
-
-    try {
-        if (!pose) initializePose();
-        if (!threeScene) initThreeJS();
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                facingMode: 'user'
+            updateDisplay() {
+                document.getElementById('displayScale').textContent = `${this.scale.toFixed(1)}x`;
+                document.getElementById('displayOffsetX').textContent = this.offsetX.toFixed(1);
+                document.getElementById('displayOffsetY').textContent = this.offsetY.toFixed(1);
+                document.getElementById('displayDepth').textContent = this.depthMultiplier.toFixed(1);
             }
-        });
+        }
 
-        videoElement.srcObject = stream;
-        await new Promise((resolve) => {
-            videoElement.onloadedmetadata = () => resolve();
-        });
+        // ==================== DOM MANAGER ====================
+        class DOMManager {
+            constructor() {
+                this.videoElement = document.getElementById('webcam');
+                this.canvasElement = document.getElementById('output_canvas');
+                this.canvasCtx = this.canvasElement.getContext('2d');
+                this.threejsCanvas = document.getElementById('threejs_canvas');
+                
+                this.buttons = {
+                    start: document.getElementById('startButton'),
+                    stop: document.getElementById('stopButton'),
+                    toggleSkeleton: document.getElementById('toggleSkeleton'),
+                    toggleConnections: document.getElementById('toggleConnections'),
+                    toggle3DModel: document.getElementById('toggle3DModel')
+                };
 
-        mediaPipeCamera = new Camera(videoElement, {
-            onFrame: async () => {
-                if (isTracking) {
-                    await pose.send({ image: videoElement });
+                this.displays = {
+                    status: document.getElementById('statusText'),
+                    landmarkCount: document.getElementById('landmarkCount'),
+                    fps: document.getElementById('fpsCounter'),
+                    modelStatus: document.getElementById('modelStatus'),
+                    posture: document.getElementById('posture'),
+                    bodyHeight: document.getElementById('bodyHeight'),
+                    shoulderWidth: document.getElementById('shoulderWidth'),
+                    movementSpeed: document.getElementById('movementSpeed'),
+                    hipX: document.getElementById('hipX'),
+                    hipY: document.getElementById('hipY'),
+                    hipZ: document.getElementById('hipZ'),
+                    modelX: document.getElementById('modelX'),
+                    modelY: document.getElementById('modelY'),
+                    modelZ: document.getElementById('modelZ')
+                };
+            }
+
+            updateStatus(message, color = '#FFA726') {
+                this.displays.status.textContent = message;
+                this.displays.status.style.color = color;
+            }
+
+            updateModelStatus(message, color = '#FFA726') {
+                this.displays.modelStatus.textContent = message;
+                this.displays.modelStatus.style.color = color;
+            }
+
+            setButtonStates(tracking) {
+                this.buttons.start.disabled = tracking;
+                this.buttons.stop.disabled = !tracking;
+            }
+        }
+
+        // ==================== THREE.JS RENDERER ====================
+        class ThreeJSRenderer {
+            constructor(canvas, settings) {
+                this.canvas = canvas;
+                this.settings = settings;
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.model = null;
+                this.modelLoaded = false;
+                
+                this.initialize();
+            }
+
+            initialize() {
+                this.scene = new THREE.Scene();
+                
+                const container = this.canvas.parentElement;
+                const aspect = container.offsetWidth / container.offsetHeight;
+                this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
+                this.camera.position.set(0, 0, 5);
+                this.camera.lookAt(0, 0, 0);
+                
+                this.renderer = new THREE.WebGLRenderer({
+                    canvas: this.canvas,
+                    alpha: true,
+                    antialias: true
+                });
+                this.renderer.setSize(container.offsetWidth, container.offsetHeight);
+                this.renderer.setClearColor(0x000000, 0);
+                
+                this.setupLighting();
+            }
+
+            setupLighting() {
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+                this.scene.add(ambientLight);
+                
+                const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1.2);
+                directionalLight1.position.set(1, 2, 1);
+                this.scene.add(directionalLight1);
+                
+                const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight2.position.set(-1, 1, -1);
+                this.scene.add(directionalLight2);
+            }
+
+            loadModel(path, onProgress, onError) {
+                const loader = new THREE.GLTFLoader();
+                
+                loader.load(
+                    path,
+                    (gltf) => {
+                        this.model = gltf.scene;
+                        this.scene.add(this.model);
+                        this.model.scale.set(this.settings.scale, this.settings.scale, this.settings.scale);
+                        this.model.position.set(0, 0, 0);
+                        this.modelLoaded = true;
+                        
+                        console.log('✅ Model loaded successfully');
+                        this.logModelStructure();
+                    },
+                    onProgress,
+                    (error) => {
+                        console.error('❌ Error loading model:', error);
+                        onError(error);
+                        this.createPlaceholder();
+                    }
+                );
+            }
+
+            logModelStructure() {
+                const bones = [];
+                this.model.traverse((object) => {
+                    if (object.isBone) {
+                        bones.push(object.name);
+                    }
+                });
+                console.log('Available bones:', bones);
+            }
+
+            createPlaceholder() {
+                const geometry = new THREE.BoxGeometry(1, 2, 0.5);
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x8B4513,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                this.model = new THREE.Mesh(geometry, material);
+                this.scene.add(this.model);
+                this.modelLoaded = true;
+            }
+
+            updateModelPose(landmarks) {
+                if (!this.modelLoaded || !this.model || !landmarks) return;
+
+                try {
+                    const keyPoints = [11, 12, 23, 24];
+                    let centerX = 0, centerY = 0, centerZ = 0, validPoints = 0;
+
+                    keyPoints.forEach(idx => {
+                        if (landmarks[idx]) {
+                            centerX += landmarks[idx].x;
+                            centerY += landmarks[idx].y;
+                            centerZ += landmarks[idx].z;
+                            validPoints++;
+                        }
+                    });
+
+                    if (validPoints === 0) return;
+
+                    centerX /= validPoints;
+                    centerY /= validPoints;
+                    centerZ /= validPoints;
+
+                    // Calculate body proportions
+                    const proportions = this.calculateBodyProportions(landmarks);
+                    this.settings.bodyScale = proportions.scale;
+                    this.settings.torsoLength = proportions.torsoLength;
+
+                    // Transform coordinates
+                    const posX = (centerX - 0.5) * this.settings.coordinateScaleX + this.settings.offsetX;
+                    const posY = -(centerY - 0.5) * this.settings.coordinateScaleY + this.settings.offsetY;
+                    const posZ = -centerZ * this.settings.depthMultiplier;
+
+                    // Apply scaling and positioning
+                    const finalScale = this.settings.scale * this.settings.bodyScale;
+                    this.model.scale.set(finalScale, finalScale, finalScale);
+                    this.model.position.set(posX, posY, posZ);
+
+                    // Calculate rotation
+                    if (landmarks[11] && landmarks[12]) {
+                        const shoulderAngle = Math.atan2(
+                            landmarks[12].y - landmarks[11].y,
+                            landmarks[12].x - landmarks[11].x
+                        );
+                        this.model.rotation.y = -shoulderAngle + Math.PI / 2;
+                    }
+
+                    this.renderer.render(this.scene, this.camera);
+
+                    return { centerX, centerY, centerZ, posX, posY, posZ, finalScale };
+                } catch (error) {
+                    console.error('Error updating model pose:', error);
+                    return null;
                 }
-            },
-            width: 1280,
-            height: 720
-        });
+            }
 
-        await mediaPipeCamera.start();
-        isTracking = true;
-        statusText.textContent = '✅ Tracking! Use buttons below to adjust armour position';
-        statusText.style.color = '#4CAF50';
-        
-        startButton.disabled = true;
-        stopButton.disabled = false;
+            calculateBodyProportions(landmarks) {
+                if (!landmarks[11] || !landmarks[12] || !landmarks[23] || !landmarks[24]) {
+                    return { scale: 1.0, torsoLength: 1.0 };
+                }
 
-    } catch (error) {
-        console.error('Error starting tracking:', error);
-        statusText.textContent = '❌ Camera Error: ' + error.message;
-        statusText.style.color = '#FF5252';
-    }
-}
+                const shoulderCenter = {
+                    x: (landmarks[11].x + landmarks[12].x) / 2,
+                    y: (landmarks[11].y + landmarks[12].y) / 2,
+                    z: (landmarks[11].z + landmarks[12].z) / 2
+                };
 
-function stopTracking() {
-    isTracking = false;
-    
-    if (mediaPipeCamera) mediaPipeCamera.stop();
-    if (videoElement.srcObject) {
-        videoElement.srcObject.getTracks().forEach(track => track.stop());
-        videoElement.srcObject = null;
-    }
-    
-    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-    statusText.textContent = '⏸ Tracking Stopped';
-    statusText.style.color = '#FFA726';
-    landmarkCount.textContent = '0';
-    fpsCounter.textContent = 'FPS: 0';
-    
-    startButton.disabled = false;
-    stopButton.disabled = true;
-}
+                const hipCenter = {
+                    x: (landmarks[23].x + landmarks[24].x) / 2,
+                    y: (landmarks[23].y + landmarks[24].y) / 2,
+                    z: (landmarks[23].z + landmarks[24].z) / 2
+                };
 
-function toggleSkeleton() {
-    showSkeleton = !showSkeleton;
-    toggleSkeletonButton.classList.toggle('active');
-}
+                const torsoLength = Math.sqrt(
+                    Math.pow(shoulderCenter.x - hipCenter.x, 2) +
+                    Math.pow(shoulderCenter.y - hipCenter.y, 2) +
+                    Math.pow(shoulderCenter.z - hipCenter.z, 2)
+                );
 
-function toggleConnections() {
-    showConnections = !showConnections;
-    toggleConnectionsButton.classList.toggle('active');
-}
+                const scale = Math.max(0.5, Math.min(2.0, torsoLength * 8));
 
-function toggle3DModel() {
-    show3DModel = !show3DModel;
-    toggle3DModelButton.classList.toggle('active');
-    threejsCanvas.style.display = show3DModel ? 'block' : 'none';
-}
+                return { scale, torsoLength };
+            }
 
-// ==================== EVENT LISTENERS ====================
-startButton.addEventListener('click', startTracking);
-stopButton.addEventListener('click', stopTracking);
-toggleSkeletonButton.addEventListener('click', toggleSkeleton);
-toggleConnectionsButton.addEventListener('click', toggleConnections);
-toggle3DModelButton.addEventListener('click', toggle3DModel);
+            handleResize() {
+                if (!this.renderer || !this.camera) return;
 
-window.addEventListener('resize', () => {
-    if (threeRenderer && threeCamera && threejsCanvas.parentElement) {
-        const container = threejsCanvas.parentElement;
-        const width = container.offsetWidth;
-        const height = container.offsetHeight;
-        threeRenderer.setSize(width, height);
-        threeCamera.aspect = width / height;
-        threeCamera.updateProjectionMatrix();
-    }
-});
+                const container = this.canvas.parentElement;
+                const width = container.offsetWidth;
+                const height = container.offsetHeight;
+                
+                this.renderer.setSize(width, height);
+                this.camera.aspect = width / height;
+                this.camera.updateProjectionMatrix();
+            }
+        }
 
-window.addEventListener('load', () => {
-    statusText.textContent = '✨ Ready! Start tracking and adjust armour position';
-    stopButton.disabled = true;
-    document.getElementById('displayScale').textContent = MODEL_SCALE.toFixed(1) + 'x';
-    document.getElementById('displayOffsetX').textContent = OFFSET_X.toFixed(1);
-    document.getElementById('displayOffsetY').textContent = OFFSET_Y.toFixed(1);
-    document.getElementById('displayDepth').textContent = DEPTH_MULTIPLIER.toFixed(1);
-    initThreeJS();
-});
+        // ==================== MEDIAPIPE PROCESSOR ====================
+        class MediaPipeProcessor {
+            constructor(domManager, appState, threeJSRenderer) {
+                this.domManager = domManager;
+                this.appState = appState;
+                this.threeJSRenderer = threeJSRenderer;
+                this.pose = null;
+                this.camera = null;
+                
+                this.initializePose();
+            }
 
-window.addEventListener('beforeunload', () => {
-    if (isTracking) stopTracking();
-});
+            initializePose() {
+                this.pose = new Pose({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+                });
+
+                this.pose.setOptions(CONFIG.MEDIAPIPE_OPTIONS);
+                this.pose.onResults(this.onResults.bind(this));
+            }
+
+            onResults(results) {
+                if (!this.appState.isTracking) return;
+
+                this.updateFPS();
+                this.renderVideoCanvas(results);
+
+                if (results.poseLandmarks) {
+                    const landmarks = this.smoothLandmarks(results.poseLandmarks);
+                    this.appState.smoothedLandmarks = landmarks;
+
+                    this.drawLandmarks(landmarks);
+                    this.calculateMetrics(landmarks);
+                    this.updateModelPosition(landmarks);
+                }
+            }
+
+            updateFPS() {
+                this.appState.frameCount++;
+                const currentTime = performance.now();
+                const delta = currentTime - this.appState.lastTime;
+
+                if (delta >= 1000) {
+                    this.appState.fps = Math.round(this.appState.frameCount * 1000 / delta);
+                    this.domManager.displays.fps.textContent = `FPS: ${this.appState.fps}`;
+                    this.appState.frameCount = 0;
+                    this.appState.lastTime = currentTime;
+                }
+            }
+
+            renderVideoCanvas(results) {
+                const { canvasElement, canvasCtx, videoElement } = this.domManager;
+                
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+                
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                canvasCtx.save();
+                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+                canvasCtx.restore();
+            }
+
+            drawLandmarks(landmarks) {
+                const { canvasCtx } = this.domManager;
+
+                if (this.appState.showConnections) {
+                    drawConnectors(canvasCtx, landmarks, POSE_CONNECTIONS, {
+                        color: '#00FF88',
+                        lineWidth: 3
+                    });
+                }
+
+                if (this.appState.showSkeleton) {
+                    // Left side (blue)
+                    drawLandmarks(canvasCtx, [
+                        landmarks[11], landmarks[13], landmarks[15],
+                        landmarks[23], landmarks[25], landmarks[27]
+                    ], { color: '#2196F3', fillColor: '#2196F3', lineWidth: 2, radius: 5 });
+
+                    // Right side (red)
+                    drawLandmarks(canvasCtx, [
+                        landmarks[12], landmarks[14], landmarks[16],
+                        landmarks[24], landmarks[26], landmarks[28]
+                    ], { color: '#FF5722', fillColor: '#FF5722', lineWidth: 2, radius: 5 });
+
+                    // Face (green)
+                    drawLandmarks(canvasCtx, [
+                        landmarks[0], landmarks[9], landmarks[10]
+                    ], { color: '#4CAF50', fillColor: '#4CAF50', lineWidth: 2, radius: 5 });
+                }
+            }
+
+            smoothLandmarks(currentLandmarks) {
+                if (!this.appState.smoothedLandmarks) return currentLandmarks;
+
+                return currentLandmarks.map((landmark, index) => {
+                    const prev = this.appState.smoothedLandmarks[index];
+                    if (!prev) return landmark;
+
+                    return {
+                        x: prev.x + (landmark.x - prev.x) * (1 - CONFIG.SMOOTHING_FACTOR),
+                        y: prev.y + (landmark.y - prev.y) * (1 - CONFIG.SMOOTHING_FACTOR),
+                        z: prev.z + (landmark.z - prev.z) * (1 - CONFIG.SMOOTHING_FACTOR),
+                        visibility: landmark.visibility
+                    };
+                });
+            }
+
+            calculateMetrics(landmarks) {
+                // Body height
+                if (landmarks[0] && landmarks[27] && landmarks[28]) {
+                    const leftHeight = this.calculateDistance(landmarks[0], landmarks[27]);
+                    const rightHeight = this.calculateDistance(landmarks[0], landmarks[28]);
+                    const avgHeight = ((leftHeight + rightHeight) / 2).toFixed(3);
+                    this.domManager.displays.bodyHeight.textContent = `${avgHeight} u`;
+                }
+
+                // Shoulder width
+                if (landmarks[11] && landmarks[12]) {
+                    const shoulderWidth = this.calculateDistance(landmarks[11], landmarks[12]);
+                    this.domManager.displays.shoulderWidth.textContent = `${shoulderWidth.toFixed(3)} u`;
+                }
+
+                // Movement speed
+                const currentTimestamp = Date.now();
+                const timeDelta = currentTimestamp - this.appState.previousTimestamp;
+
+                if (this.appState.previousLandmarks && timeDelta > 0) {
+                    const velocity = this.calculateVelocity(landmarks, this.appState.previousLandmarks, timeDelta);
+                    this.domManager.displays.movementSpeed.textContent = `${velocity.toFixed(3)} u/s`;
+                }
+
+                this.appState.previousLandmarks = JSON.parse(JSON.stringify(landmarks));
+                this.appState.previousTimestamp = currentTimestamp;
+
+                // Posture
+                const posture = this.determinePosture(landmarks);
+                this.domManager.displays.posture.textContent = posture;
+                this.domManager.displays.landmarkCount.textContent = landmarks.length;
+            }
+
+            updateModelPosition(landmarks) {
+                if (!this.appState.show3DModel) return;
+
+                const result = this.threeJSRenderer.updateModelPose(landmarks);
+                
+                if (result) {
+                    this.domManager.displays.hipX.textContent = result.centerX.toFixed(3);
+                    this.domManager.displays.hipY.textContent = result.centerY.toFixed(3);
+                    this.domManager.displays.hipZ.textContent = result.centerZ.toFixed(3);
+                    this.domManager.displays.modelX.textContent = result.posX.toFixed(2);
+                    this.domManager.displays.modelY.textContent = result.posY.toFixed(2);
+                    this.domManager.displays.modelZ.textContent = result.posZ.toFixed(2);
+                    document.getElementById('displayScale').textContent = `${result.finalScale.toFixed(1)}x`;
+                }
+            }
+
+            calculateDistance(point1, point2) {
+                const dx = point2.x - point1.x;
+                const dy = point2.y - point1.y;
+                const dz = (point2.z || 0) - (point1.z || 0);
+                return Math.sqrt(dx * dx + dy * dy + dz * dz);
+            }
+
+            calculateVelocity(currentLandmarks, previousLandmarks, timeDelta) {
+                let totalMovement = 0;
+                const keyPoints = [11, 12, 23, 24];
+
+                keyPoints.forEach(idx => {
+                    if (currentLandmarks[idx] && previousLandmarks[idx]) {
+                        totalMovement += this.calculateDistance(
+                            currentLandmarks[idx],
+                            previousLandmarks[idx]
+                        );
+                    }
+                });
+
+                return (totalMovement / keyPoints.length) / timeDelta * 1000;
+            }
+
+            determinePosture(landmarks) {
+                const nose = landmarks[0];
+                const leftHip = landmarks[23];
+                const rightHip = landmarks[24];
+                const leftKnee = landmarks[25];
+                const rightKnee = landmarks[26];
+
+                if (!nose || !leftHip || !rightHip || !leftKnee || !rightKnee) {
+                    return "Unknown";
+                }
+
+                const hipMidY = (leftHip.y + rightHip.y) / 2;
+                const kneeMidY = (leftKnee.y + rightKnee.y) / 2;
+                const noseToHipDist = Math.abs(nose.y - hipMidY);
+                const hipToKneeDist = Math.abs(hipMidY - kneeMidY);
+
+                if (noseToHipDist < 0.2) return "Lying Down";
+                if (hipToKneeDist < 0.15) return "Sitting";
+                if (nose.y < hipMidY && hipToKneeDist > 0.15) return "Standing";
+                return "Transitioning";
+            }
+
+            async startCamera() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            width: { ideal: CONFIG.VIDEO_WIDTH },
+                            height: { ideal: CONFIG.VIDEO_HEIGHT },
+                            facingMode: 'user'
+                        }
+                    });
+
+                    this.domManager.videoElement.srcObject = stream;
+                    await new Promise(resolve => {
+                        this.domManager.videoElement.onloadedmetadata = () => resolve();
+                    });
+
+                    this.camera = new Camera(this.domManager.videoElement, {
+                        onFrame: async () => {
+                            if (this.appState.isTracking) {
+                                await this.pose.send({ image: this.domManager.videoElement });
+                            }
+                        },
+                        width: CONFIG.VIDEO_WIDTH,
+                        height: CONFIG.VIDEO_HEIGHT
+                    });
+
+                    await this.camera.start();
+                    return true;
+                } catch (error) {
+                    console.error('Camera error:', error);
+                    throw error;
+                }
+            }
+
+            stopCamera() {
+                if (this.camera) {
+                    this.camera.stop();
+                    this.camera = null;
+                }
+
+                if (this.domManager.videoElement.srcObject) {
+                    this.domManager.videoElement.srcObject.getTracks().forEach(track => track.stop());
+                    this.domManager.videoElement.srcObject = null;
+                }
+            }
+        }
+
+        // ==================== MAIN APPLICATION CONTROLLER ====================
+        class ArmourTracker {
+            constructor() {
+                this.appState = new AppState();
+                this.modelSettings = new ModelSettings();
+                this.domManager = new DOMManager();
+                this.threeJSRenderer = new ThreeJSRenderer(
+                    this.domManager.threejsCanvas,
+                    this.modelSettings
+                );
+                this.mediaPipeProcessor = new MediaPipeProcessor(
+                    this.domManager,
+                    this.appState,
+                    this.threeJSRenderer
+                );
+
+                this.initialize();
+            }
+
+            initialize() {
+                this.setupEventListeners();
+                this.loadModel();
+                this.modelSettings.updateDisplay();
+                this.domManager.updateStatus('✨ Ready! Start tracking and adjust armour position');
+                this.domManager.setButtonStates(false);
+            }
+
+            setupEventListeners() {
+                this.domManager.buttons.start.addEventListener('click', () => this.start());
+                this.domManager.buttons.stop.addEventListener('click', () => this.stop());
+                this.domManager.buttons.toggleSkeleton.addEventListener('click', () => this.toggleSkeleton());
+                this.domManager.buttons.toggleConnections.addEventListener('click', () => this.toggleConnections());
+                this.domManager.buttons.toggle3DModel.addEventListener('click', () => this.toggle3DModel());
+
+                window.addEventListener('resize', () => this.threeJSRenderer.handleResize());
+                window.addEventListener('beforeunload', () => this.cleanup());
+            }
+
+            loadModel() {
+                this.threeJSRenderer.loadModel(
+                    CONFIG.MODEL_PATH,
+                    (xhr) => {
+                        const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
+                        this.domManager.updateModelStatus(`Armour: Loading ${percent}%`);
+                    },
+                    (error) => {
+                        this.domManager.updateModelStatus('Armour: Using Placeholder', '#FFA726');
+                    }
+                );
+
+                // Wait for model to load
+                const checkModel = setInterval(() => {
+                    if (this.threeJSRenderer.modelLoaded) {
+                        this.domManager.updateModelStatus('Armour: ✅ Loaded', '#4CAF50');
+                        clearInterval(checkModel);
+                    }
+                }, 100);
+            }
+
+            async start() {
+                if (this.appState.isTracking) return;
+
+                try {
+                    await this.mediaPipeProcessor.startCamera();
+                    this.appState.isTracking = true;
+                    this.domManager.updateStatus('✅ Tracking! Use buttons below to adjust armour position', '#4CAF50');
+                    this.domManager.setButtonStates(true);
+                } catch (error) {
+                    this.domManager.updateStatus(`❌ Camera Error: ${error.message}`, '#FF5252');
+                }
+            }
+
+            stop() {
+                this.appState.isTracking = false;
+                this.mediaPipeProcessor.stopCamera();
+                
+                this.domManager.canvasCtx.clearRect(
+                    0, 0,
+                    this.domManager.canvasElement.width,
+                    this.domManager.canvasElement.height
+                );
+                
+                this.domManager.updateStatus('⏸ Tracking Stopped', '#FFA726');
+                this.domManager.displays.landmarkCount.textContent = '0';
+                this.domManager.displays.fps.textContent = 'FPS: 0';
+                this.domManager.setButtonStates(false);
+            }
+
+            toggleSkeleton() {
+                this.appState.showSkeleton = !this.appState.showSkeleton;
+                this.domManager.buttons.toggleSkeleton.classList.toggle('active');
+            }
+
+            toggleConnections() {
+                this.appState.showConnections = !this.appState.showConnections;
+                this.domManager.buttons.toggleConnections.classList.toggle('active');
+            }
+
+            toggle3DModel() {
+                this.appState.show3DModel = !this.appState.show3DModel;
+                this.domManager.buttons.toggle3DModel.classList.toggle('active');
+                this.domManager.threejsCanvas.style.display = this.appState.show3DModel ? 'block' : 'none';
+            }
+
+            // Adjustment methods
+            adjustScale(delta) {
+                this.modelSettings.scale = Math.max(0.1, this.modelSettings.scale + delta);
+                if (this.threeJSRenderer.model) {
+                    this.threeJSRenderer.model.scale.set(
+                        this.modelSettings.scale,
+                        this.modelSettings.scale,
+                        this.modelSettings.scale
+                    );
+                }
+                this.modelSettings.updateDisplay();
+                console.log('Scale:', this.modelSettings.scale.toFixed(1));
+            }
+
+            adjustOffsetX(delta) {
+                this.modelSettings.offsetX += delta;
+                this.modelSettings.updateDisplay();
+                console.log('Offset X:', this.modelSettings.offsetX.toFixed(1));
+            }
+
+            adjustOffsetY(delta) {
+                this.modelSettings.offsetY += delta;
+                this.modelSettings.updateDisplay();
+                console.log('Offset Y:', this.modelSettings.offsetY.toFixed(1));
+            }
+
+            adjustDepth(delta) {
+                this.modelSettings.depthMultiplier = Math.max(0.1, this.modelSettings.depthMultiplier + delta);
+                this.modelSettings.updateDisplay();
+                console.log('Depth:', this.modelSettings.depthMultiplier.toFixed(1));
+            }
+
+            cleanup() {
+                if (this.appState.isTracking) {
+                    this.stop();
+                }
+            }
+        }
+
+        // ==================== INITIALIZE APPLICATION ====================
+        let armourTracker;
+
+        window.addEventListener('load', () => {
+            armourTracker = new ArmourTracker();
         });
     </script>
 </body>
