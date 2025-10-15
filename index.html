@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Body Tracking with MediaPipe</title>
+    <title>Advanced Body Tracking with 3D Model</title>
     <style>
         * {
             box-sizing: border-box;
@@ -17,11 +17,13 @@
             min-height: 100vh;
             padding: 20px;
             color: white;
+            overflow: hidden;
         }
 
         .app-container {
             max-width: 1400px;
             margin: 0 auto;
+            position: relative;
         }
 
         h1 {
@@ -57,7 +59,6 @@
             width: 100%;
             height: auto;
             display: block;
-            /* Removed mirror transform */
         }
 
         #output_canvas {
@@ -66,6 +67,17 @@
             left: 0;
             width: 100%;
             height: 100%;
+            pointer-events: none;
+        }
+
+        #threejs_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.8;
         }
 
         .fps-counter {
@@ -195,26 +207,6 @@
             border-left: 3px solid #FF5722;
         }
 
-        .visibility-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-left: 5px;
-        }
-
-        .visibility-good {
-            background: #4CAF50;
-        }
-
-        .visibility-medium {
-            background: #FFC107;
-        }
-
-        .visibility-poor {
-            background: #F44336;
-        }
-
         @media (max-width: 1024px) {
             .main-grid {
                 grid-template-columns: 1fr;
@@ -225,28 +217,18 @@
                 grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             }
         }
-
-        @media (max-width: 768px) {
-            h1 {
-                font-size: 1.5em;
-            }
-            
-            button {
-                padding: 10px 18px;
-                font-size: 14px;
-            }
-        }
     </style>
 </head>
 <body>
     <div class="app-container">
-        <h1>🎯 Advanced Body Tracking with MediaPipe</h1>
+        <h1>🎯 Advanced Body Tracking with 3D Model</h1>
         
         <div class="main-grid">
             <div class="video-section">
                 <div class="video-container">
                     <video id="webcam" autoplay muted playsinline></video>
                     <canvas id="output_canvas"></canvas>
+                    <canvas id="threejs_canvas"></canvas>
                     <div class="fps-counter" id="fpsCounter">FPS: 0</div>
                 </div>
 
@@ -256,12 +238,16 @@
                     <button id="toggleSkeleton" class="active">👤 Skeleton</button>
                     <button id="toggleAngles">📐 Angles</button>
                     <button id="toggleConnections">🔗 Connections</button>
+                    <button id="toggle3DModel" class="active">🎭 3D Model</button>
                 </div>
 
                 <div class="status-card">
                     <div id="statusText">Click "Start Tracking" to begin</div>
                     <div style="margin-top: 8px;">
                         Landmarks: <span id="landmarkCount" style="color: #4CAF50; font-weight: bold;">0</span>/33
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <span id="modelStatus" style="color: #FFA726;">Model: Not Loaded</span>
                     </div>
                 </div>
             </div>
@@ -350,20 +336,25 @@
         </div>
     </div>
 
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
     <!-- MediaPipe Pose -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
 
     <script>
         // ==================== GLOBAL STATE ====================
         let pose = null;
-        let camera = null;
+        let mediaPipeCamera = null; // Renamed to avoid conflict
         let isTracking = false;
         let showSkeleton = true;
         let showAngles = false;
         let showConnections = true;
+        let show3DModel = true;
 
         // Performance tracking
         let frameCount = 0;
@@ -374,214 +365,145 @@
         let previousLandmarks = null;
         let previousTimestamp = 0;
 
+        // ==================== THREE.JS SETUP ====================
+        let threeScene, threeCamera, threeRenderer;
+        let model3D, skeleton, bones = {};
+        let modelLoaded = false;
+
+        // MediaPipe landmark indices
+        const POSE_LANDMARKS = {
+            NOSE: 0,
+            LEFT_SHOULDER: 11,
+            RIGHT_SHOULDER: 12,
+            LEFT_ELBOW: 13,
+            RIGHT_ELBOW: 14,
+            LEFT_WRIST: 15,
+            RIGHT_WRIST: 16,
+            LEFT_HIP: 23,
+            RIGHT_HIP: 24,
+            LEFT_KNEE: 25,
+            RIGHT_KNEE: 26,
+            LEFT_ANKLE: 27,
+            RIGHT_ANKLE: 28
+        };
+
+        // Bone mapping - ADJUST THESE NAMES TO MATCH YOUR GLB RIG
+        const boneMapping = {
+            hips: 'Hips',
+            spine: 'Spine',
+            chest: 'Spine1',
+            neck: 'Neck',
+            head: 'Head',
+            leftShoulder: 'LeftShoulder',
+            leftUpperArm: 'LeftArm',
+            leftLowerArm: 'LeftForeArm',
+            leftHand: 'LeftHand',
+            rightShoulder: 'RightShoulder',
+            rightUpperArm: 'RightArm',
+            rightLowerArm: 'RightForeArm',
+            rightHand: 'RightHand',
+            leftUpperLeg: 'LeftUpLeg',
+            leftLowerLeg: 'LeftLeg',
+            leftFoot: 'LeftFoot',
+            rightUpperLeg: 'RightUpLeg',
+            rightLowerLeg: 'RightLeg',
+            rightFoot: 'RightFoot'
+        };
+
         // ==================== DOM ELEMENTS ====================
         const videoElement = document.getElementById('webcam');
         const canvasElement = document.getElementById('output_canvas');
         const canvasCtx = canvasElement.getContext('2d');
+        const threejsCanvas = document.getElementById('threejs_canvas');
+        
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
         const toggleSkeletonButton = document.getElementById('toggleSkeleton');
         const toggleAnglesButton = document.getElementById('toggleAngles');
         const toggleConnectionsButton = document.getElementById('toggleConnections');
+        const toggle3DModelButton = document.getElementById('toggle3DModel');
+        
         const statusText = document.getElementById('statusText');
         const landmarkCount = document.getElementById('landmarkCount');
         const fpsCounter = document.getElementById('fpsCounter');
+        const modelStatus = document.getElementById('modelStatus');
+
+        // ==================== THREE.JS INITIALIZATION ====================
+        function initThreeJS() {
+            // Scene setup
+            threeScene = new THREE.Scene();
+            
+            // Camera setup
+            const aspect = window.innerWidth / window.innerHeight;
+            threeCamera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
+            threeCamera.position.set(0, 1, 3);
+            threeCamera.lookAt(0, 1, 0);
+            
+            // Renderer setup
+            threeRenderer = new THREE.WebGLRenderer({ 
+                canvas: threejsCanvas,
+                alpha: true,
+                antialias: true 
+            });
+            threeRenderer.setSize(threejsCanvas.parentElement.offsetWidth, threejsCanvas.parentElement.offsetHeight);
+            threeRenderer.setClearColor(0x000000, 0);
+            
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            threeScene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 2, 1);
+            threeScene.add(directionalLight);
+            
+            // Load GLB model
+            loadGLBModel();
+        }
+
+        function loadGLBModel() {
+            // REPLACE 'path/to/your-rigged-model.glb' WITH YOUR ACTUAL MODEL PATH
+            const modelPath = 'path/to/your-rigged-model.glb';
+            
+            const loader = new THREE.GLTFLoader();
+            loader.load(
+                modelPath,
+                function(gltf) {
+                    model3D = gltf.scene;
+                    threeScene.add(model3D);
+                    
+                    // Extract bones from the model
+                    model3D.traverse((object) => {
+                        if (object.isBone) {
+                            bones[object.name] = object;
+                        }
+                    });
+                    
+                    modelLoaded = true;
+                    modelStatus.textContent = 'Model: ✅ Loaded';
+                    modelStatus.style.color = '#4CAF50';
+                    console.log('Available bones:', Object.keys(bones));
+                    
+                    // Scale and position model
+                    model3D.scale.set(1, 1, 1);
+                    model3D.position.set(0, 0, 0);
+                },
+                function(xhr) {
+                    const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
+                    modelStatus.textContent = `Model: Loading ${percent}%`;
+                },
+                function(error) {
+                    console.error('Error loading model:', error);
+                    modelStatus.textContent = 'Model: ❌ Load Failed';
+                    modelStatus.style.color = '#FF5252';
+                }
+            );
+        }
 
         // ==================== UTILITY FUNCTIONS ====================
 
         /**
-         * Calculate angle between three points using atan2
-         * Returns angle in degrees (0-180)
+         * Calculate angle between three points
          */
-            import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-
-// Scene setup
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
-
-let model, skeleton, bones = {};
-
-// Load your rigged GLB model
-const loader = new GLTFLoader();
-loader.load('path/to/your-rigged-model.glb', function(gltf) {
-    model = gltf.scene;
-    scene.add(model);
-    
-    // Extract bones from the model
-    model.traverse((object) => {
-        if (object.isBone) {
-            bones[object.name] = object;
-        }
-    });
-    
-    console.log('Available bones:', Object.keys(bones));
-});
-
-camera.position.set(0, 1.5, 3);
-
-        // Bone mapping - adjust names based on your GLB rig
-const boneMapping = {
-    // Spine and torso
-    hips: 'Hips',
-    spine: 'Spine',
-    chest: 'Spine1',
-    neck: 'Neck',
-    head: 'Head',
-    
-    // Left arm
-    leftShoulder: 'LeftShoulder',
-    leftUpperArm: 'LeftArm',
-    leftLowerArm: 'LeftForeArm',
-    leftHand: 'LeftHand',
-    
-    // Right arm
-    rightShoulder: 'RightShoulder',
-    rightUpperArm: 'RightArm',
-    rightLowerArm: 'RightForeArm',
-    rightHand: 'RightHand',
-    
-    // Left leg
-    leftUpperLeg: 'LeftUpLeg',
-    leftLowerLeg: 'LeftLeg',
-    leftFoot: 'LeftFoot',
-    
-    // Right leg
-    rightUpperLeg: 'RightUpLeg',
-    rightLowerLeg: 'RightLeg',
-    rightFoot: 'RightFoot'
-};
-
-// MediaPipe landmark indices
-const POSE_LANDMARKS = {
-    NOSE: 0,
-    LEFT_SHOULDER: 11,
-    RIGHT_SHOULDER: 12,
-    LEFT_ELBOW: 13,
-    RIGHT_ELBOW: 14,
-    LEFT_WRIST: 15,
-    RIGHT_WRIST: 16,
-    LEFT_HIP: 23,
-    RIGHT_HIP: 24,
-    LEFT_KNEE: 25,
-    RIGHT_KNEE: 26,
-    LEFT_ANKLE: 27,
-    RIGHT_ANKLE: 28
-};
-/**
- * Calculate rotation quaternion between two vectors
- * This is the core function for joint rotation
- */
-function calculateRotation(startPoint, midPoint, endPoint) {
-    // Create direction vectors
-    const v1 = new THREE.Vector3(
-        startPoint.x - midPoint.x,
-        startPoint.y - midPoint.y,
-        startPoint.z - midPoint.z
-    ).normalize();
-    
-    const v2 = new THREE.Vector3(
-        endPoint.x - midPoint.x,
-        endPoint.y - midPoint.y,
-        endPoint.z - midPoint.z
-    ).normalize();
-    
-    // Calculate quaternion rotation
-    const quaternion = new THREE.Quaternion();
-    quaternion.setFromUnitVectors(v1, v2);
-    
-    return quaternion;
-}
-
-/**
- * Convert MediaPipe landmark to Three.js Vector3
- */
-function landmarkToVector3(landmark) {
-    return new THREE.Vector3(
-        landmark.x * 2 - 1,  // Convert from [0,1] to [-1,1]
-        -(landmark.y * 2 - 1), // Invert Y axis
-        -landmark.z // Invert Z for proper depth
-    );
-}
-/**
- * Main function to apply pose landmarks to 3D model
- */
-function applyPoseToModel(poseLandmarks) {
-    if (!model || !bones || !poseLandmarks) return;
-    
-    // Convert landmarks to Three.js coordinates
-    const landmarks = poseLandmarks.map(landmarkToVector3);
-    
-    // Right arm rotation
-    if (bones[boneMapping.rightUpperArm]) {
-        const shoulderPos = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
-        const elbowPos = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
-        const wristPos = landmarks[POSE_LANDMARKS.RIGHT_WRIST];
-        
-        const rotation = calculateRotation(shoulderPos, elbowPos, wristPos);
-        bones[boneMapping.rightUpperArm].quaternion.copy(rotation);
-    }
-    
-    // Right forearm
-    if (bones[boneMapping.rightLowerArm]) {
-        const elbowPos = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
-        const wristPos = landmarks[POSE_LANDMARKS.RIGHT_WRIST];
-        const shoulderPos = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
-        
-        const rotation = calculateRotation(shoulderPos, elbowPos, wristPos);
-        bones[boneMapping.rightLowerArm].quaternion.copy(rotation);
-    }
-    
-    // Left arm
-    if (bones[boneMapping.leftUpperArm]) {
-        const shoulderPos = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
-        const elbowPos = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
-        const wristPos = landmarks[POSE_LANDMARKS.LEFT_WRIST];
-        
-        const rotation = calculateRotation(shoulderPos, elbowPos, wristPos);
-        bones[boneMapping.leftUpperArm].quaternion.copy(rotation);
-    }
-    
-    // Right leg
-    if (bones[boneMapping.rightUpperLeg]) {
-        const hipPos = landmarks[POSE_LANDMARKS.RIGHT_HIP];
-        const kneePos = landmarks[POSE_LANDMARKS.RIGHT_KNEE];
-        const anklePos = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
-        
-        const rotation = calculateRotation(hipPos, kneePos, anklePos);
-        bones[boneMapping.rightUpperLeg].quaternion.copy(rotation);
-    }
-    
-    // Add more bones as needed...
-    
-    // Update model position based on hip center
-    const hipCenter = new THREE.Vector3()
-        .addVectors(
-            landmarks[POSE_LANDMARKS.LEFT_HIP],
-            landmarks[POSE_LANDMARKS.RIGHT_HIP]
-        )
-        .multiplyScalar(0.5);
-    
-    model.position.copy(hipCenter);
-}
-// In your MediaPipe onResults callback
-function onPoseResults(results) {
-    if (!isTracking) return;
-    
-    // Your existing canvas drawing code...
-    
-    // Apply pose to 3D model
-    if (results.poseLandmarks) {
-        applyPoseToModel(results.poseLandmarks);
-    }
-    
-    // Render Three.js scene
-    renderer.render(scene, camera);
-}
-
         function calculateAngle(firstPoint, midPoint, lastPoint) {
             const radians = Math.atan2(
                 lastPoint.y - midPoint.y,
@@ -593,7 +515,6 @@ function onPoseResults(results) {
             
             let degrees = Math.abs(radians * 180.0 / Math.PI);
             
-            // Always return acute angle
             if (degrees > 180) {
                 degrees = 360 - degrees;
             }
@@ -602,7 +523,7 @@ function onPoseResults(results) {
         }
 
         /**
-         * Calculate Euclidean distance between two points
+         * Calculate Euclidean distance
          */
         function calculateDistance(point1, point2) {
             const dx = point2.x - point1.x;
@@ -612,13 +533,13 @@ function onPoseResults(results) {
         }
 
         /**
-         * Calculate movement velocity between frames
+         * Calculate movement velocity
          */
         function calculateVelocity(currentLandmarks, previousLandmarks, timeDelta) {
             if (!previousLandmarks || timeDelta === 0) return 0;
 
             let totalMovement = 0;
-            const keyPoints = [11, 12, 23, 24]; // Shoulders and hips
+            const keyPoints = [11, 12, 23, 24];
 
             keyPoints.forEach(idx => {
                 if (currentLandmarks[idx] && previousLandmarks[idx]) {
@@ -630,11 +551,11 @@ function onPoseResults(results) {
                 }
             });
 
-            return (totalMovement / keyPoints.length) / timeDelta * 1000; // per second
+            return (totalMovement / keyPoints.length) / timeDelta * 1000;
         }
 
         /**
-         * Determine body posture based on landmark positions
+         * Determine body posture
          */
         function determinePosture(landmarks) {
             const nose = landmarks[0];
@@ -649,8 +570,6 @@ function onPoseResults(results) {
 
             const hipMidY = (leftHip.y + rightHip.y) / 2;
             const kneeMidY = (leftKnee.y + rightKnee.y) / 2;
-            
-            // Vertical difference analysis
             const noseToHipDist = Math.abs(nose.y - hipMidY);
             const hipToKneeDist = Math.abs(hipMidY - kneeMidY);
 
@@ -666,20 +585,7 @@ function onPoseResults(results) {
         }
 
         /**
-         * Get visibility indicator HTML
-         */
-        function getVisibilityIndicator(visibility) {
-            if (!visibility) return '';
-            
-            let className = 'visibility-poor';
-            if (visibility > 0.8) className = 'visibility-good';
-            else if (visibility > 0.5) className = 'visibility-medium';
-            
-            return `<span class="visibility-indicator ${className}"></span>`;
-        }
-
-        /**
-         * Draw angle arc and text on canvas
+         * Draw angle arc and text
          */
         function drawAngle(ctx, midPoint, angle, color = '#FFD700') {
             if (!showAngles) return;
@@ -700,6 +606,147 @@ function onPoseResults(results) {
             ctx.textAlign = 'center';
             ctx.fillText(`${Math.round(angle)}°`, x, y - radius - 10);
             ctx.restore();
+        }
+
+        // ==================== THREE.JS BONE ANIMATION ====================
+
+        /**
+         * Convert MediaPipe landmark to Three.js Vector3
+         */
+        function landmarkToVector3(landmark) {
+            return new THREE.Vector3(
+                (landmark.x * 2 - 1) * -1,  // Mirror X and convert to [-1,1]
+                -(landmark.y * 2 - 1),      // Invert Y
+                -landmark.z * 2             // Scale depth
+            );
+        }
+
+        /**
+         * Calculate rotation quaternion between vectors
+         */
+        function calculateBoneRotation(startPoint, midPoint, endPoint) {
+            const v1 = new THREE.Vector3()
+                .subVectors(startPoint, midPoint)
+                .normalize();
+            
+            const v2 = new THREE.Vector3()
+                .subVectors(endPoint, midPoint)
+                .normalize();
+            
+            const quaternion = new THREE.Quaternion();
+            quaternion.setFromUnitVectors(v1, v2);
+            
+            return quaternion;
+        }
+
+        /**
+         * Apply pose landmarks to 3D model
+         */
+        function applyPoseToModel(poseLandmarks) {
+            if (!modelLoaded || !model3D || !bones || !poseLandmarks || !show3DModel) {
+                return;
+            }
+            
+            try {
+                // Convert all landmarks to Three.js coordinates
+                const landmarks = poseLandmarks.map(landmarkToVector3);
+                
+                // Update model position based on hip center
+                const hipCenter = new THREE.Vector3()
+                    .addVectors(
+                        landmarks[POSE_LANDMARKS.LEFT_HIP],
+                        landmarks[POSE_LANDMARKS.RIGHT_HIP]
+                    )
+                    .multiplyScalar(0.5);
+                
+                model3D.position.copy(hipCenter);
+
+                // RIGHT ARM - Upper arm rotation
+                if (bones[boneMapping.rightUpperArm]) {
+                    const shoulderPos = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
+                    const elbowPos = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
+                    const hipPos = landmarks[POSE_LANDMARKS.RIGHT_HIP];
+                    
+                    const rotation = calculateBoneRotation(hipPos, shoulderPos, elbowPos);
+                    bones[boneMapping.rightUpperArm].quaternion.slerp(rotation, 0.3);
+                }
+                
+                // RIGHT ARM - Forearm rotation
+                if (bones[boneMapping.rightLowerArm]) {
+                    const shoulderPos = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
+                    const elbowPos = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
+                    const wristPos = landmarks[POSE_LANDMARKS.RIGHT_WRIST];
+                    
+                    const rotation = calculateBoneRotation(shoulderPos, elbowPos, wristPos);
+                    bones[boneMapping.rightLowerArm].quaternion.slerp(rotation, 0.3);
+                }
+                
+                // LEFT ARM - Upper arm
+                if (bones[boneMapping.leftUpperArm]) {
+                    const shoulderPos = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+                    const elbowPos = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
+                    const hipPos = landmarks[POSE_LANDMARKS.LEFT_HIP];
+                    
+                    const rotation = calculateBoneRotation(hipPos, shoulderPos, elbowPos);
+                    bones[boneMapping.leftUpperArm].quaternion.slerp(rotation, 0.3);
+                }
+                
+                // LEFT ARM - Forearm
+                if (bones[boneMapping.leftLowerArm]) {
+                    const shoulderPos = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+                    const elbowPos = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
+                    const wristPos = landmarks[POSE_LANDMARKS.LEFT_WRIST];
+                    
+                    const rotation = calculateBoneRotation(shoulderPos, elbowPos, wristPos);
+                    bones[boneMapping.leftLowerArm].quaternion.slerp(rotation, 0.3);
+                }
+                
+                // RIGHT LEG - Upper leg
+                if (bones[boneMapping.rightUpperLeg]) {
+                    const hipPos = landmarks[POSE_LANDMARKS.RIGHT_HIP];
+                    const kneePos = landmarks[POSE_LANDMARKS.RIGHT_KNEE];
+                    const shoulderPos = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
+                    
+                    const rotation = calculateBoneRotation(shoulderPos, hipPos, kneePos);
+                    bones[boneMapping.rightUpperLeg].quaternion.slerp(rotation, 0.3);
+                }
+                
+                // RIGHT LEG - Lower leg
+                if (bones[boneMapping.rightLowerLeg]) {
+                    const hipPos = landmarks[POSE_LANDMARKS.RIGHT_HIP];
+                    const kneePos = landmarks[POSE_LANDMARKS.RIGHT_KNEE];
+                    const anklePos = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
+                    
+                    const rotation = calculateBoneRotation(hipPos, kneePos, anklePos);
+                    bones[boneMapping.rightLowerLeg].quaternion.slerp(rotation, 0.3);
+                }
+                
+                // LEFT LEG - Upper leg
+                if (bones[boneMapping.leftUpperLeg]) {
+                    const hipPos = landmarks[POSE_LANDMARKS.LEFT_HIP];
+                    const kneePos = landmarks[POSE_LANDMARKS.LEFT_KNEE];
+                    const shoulderPos = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+                    
+                    const rotation = calculateBoneRotation(shoulderPos, hipPos, kneePos);
+                    bones[boneMapping.leftUpperLeg].quaternion.slerp(rotation, 0.3);
+                }
+                
+                // LEFT LEG - Lower leg
+                if (bones[boneMapping.leftLowerLeg]) {
+                    const hipPos = landmarks[POSE_LANDMARKS.LEFT_HIP];
+                    const kneePos = landmarks[POSE_LANDMARKS.LEFT_KNEE];
+                    const anklePos = landmarks[POSE_LANDMARKS.LEFT_ANKLE];
+                    
+                    const rotation = calculateBoneRotation(hipPos, kneePos, anklePos);
+                    bones[boneMapping.leftLowerLeg].quaternion.slerp(rotation, 0.3);
+                }
+
+                // Render the scene
+                threeRenderer.render(threeScene, threeCamera);
+                
+            } catch (error) {
+                console.error('Error applying pose to model:', error);
+            }
         }
 
         // ==================== MEDIAPIPE INITIALIZATION ====================
@@ -744,7 +791,7 @@ function onPoseResults(results) {
             // Clear canvas
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-            // Draw video WITHOUT mirroring
+            // Draw video
             canvasCtx.save();
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.restore();
@@ -795,13 +842,11 @@ function onPoseResults(results) {
                     });
                 }
 
-                // Calculate and display joint angles
+                // Calculate metrics
                 calculateJointAngles(landmarks);
-
-                // Calculate body metrics
                 calculateBodyMetrics(landmarks);
 
-                // Calculate movement velocity
+                // Calculate velocity
                 const currentTimestamp = Date.now();
                 const timeDelta = currentTimestamp - previousTimestamp;
                 
@@ -820,6 +865,9 @@ function onPoseResults(results) {
 
                 // Update landmark count
                 landmarkCount.textContent = landmarks.length;
+
+                // Apply pose to 3D model
+                applyPoseToModel(landmarks);
             }
         }
 
@@ -829,9 +877,7 @@ function onPoseResults(results) {
             // Left arm angles
             if (landmarks[11] && landmarks[13] && landmarks[15]) {
                 const leftShoulderAngle = calculateAngle(
-                    landmarks[23], // Left hip
-                    landmarks[11], // Left shoulder
-                    landmarks[13]  // Left elbow
+                    landmarks[23], landmarks[11], landmarks[13]
                 );
                 document.getElementById('leftShoulder').innerHTML = 
                     `${Math.round(leftShoulderAngle)}°`;
@@ -839,13 +885,9 @@ function onPoseResults(results) {
                 if (showAngles) {
                     drawAngle(canvasCtx, landmarks[11], leftShoulderAngle, '#2196F3');
                 }
-            }
 
-            if (landmarks[11] && landmarks[13] && landmarks[15]) {
                 const leftElbowAngle = calculateAngle(
-                    landmarks[11], // Left shoulder
-                    landmarks[13], // Left elbow
-                    landmarks[15]  // Left wrist
+                    landmarks[11], landmarks[13], landmarks[15]
                 );
                 document.getElementById('leftElbow').innerHTML = 
                     `${Math.round(leftElbowAngle)}°`;
@@ -858,9 +900,7 @@ function onPoseResults(results) {
             // Right arm angles
             if (landmarks[12] && landmarks[14] && landmarks[16]) {
                 const rightShoulderAngle = calculateAngle(
-                    landmarks[24], // Right hip
-                    landmarks[12], // Right shoulder
-                    landmarks[14]  // Right elbow
+                    landmarks[24], landmarks[12], landmarks[14]
                 );
                 document.getElementById('rightShoulder').innerHTML = 
                     `${Math.round(rightShoulderAngle)}°`;
@@ -868,13 +908,9 @@ function onPoseResults(results) {
                 if (showAngles) {
                     drawAngle(canvasCtx, landmarks[12], rightShoulderAngle, '#FF5722');
                 }
-            }
 
-            if (landmarks[12] && landmarks[14] && landmarks[16]) {
                 const rightElbowAngle = calculateAngle(
-                    landmarks[12], // Right shoulder
-                    landmarks[14], // Right elbow
-                    landmarks[16]  // Right wrist
+                    landmarks[12], landmarks[14], landmarks[16]
                 );
                 document.getElementById('rightElbow').innerHTML = 
                     `${Math.round(rightElbowAngle)}°`;
@@ -887,9 +923,7 @@ function onPoseResults(results) {
             // Left leg angles
             if (landmarks[11] && landmarks[23] && landmarks[25]) {
                 const leftHipAngle = calculateAngle(
-                    landmarks[11], // Left shoulder
-                    landmarks[23], // Left hip
-                    landmarks[25]  // Left knee
+                    landmarks[11], landmarks[23], landmarks[25]
                 );
                 document.getElementById('leftHip').innerHTML = 
                     `${Math.round(leftHipAngle)}°`;
@@ -901,9 +935,7 @@ function onPoseResults(results) {
 
             if (landmarks[23] && landmarks[25] && landmarks[27]) {
                 const leftKneeAngle = calculateAngle(
-                    landmarks[23], // Left hip
-                    landmarks[25], // Left knee
-                    landmarks[27]  // Left ankle
+                    landmarks[23], landmarks[25], landmarks[27]
                 );
                 document.getElementById('leftKnee').innerHTML = 
                     `${Math.round(leftKneeAngle)}°`;
@@ -916,9 +948,7 @@ function onPoseResults(results) {
             // Right leg angles
             if (landmarks[12] && landmarks[24] && landmarks[26]) {
                 const rightHipAngle = calculateAngle(
-                    landmarks[12], // Right shoulder
-                    landmarks[24], // Right hip
-                    landmarks[26]  // Right knee
+                    landmarks[12], landmarks[24], landmarks[26]
                 );
                 document.getElementById('rightHip').innerHTML = 
                     `${Math.round(rightHipAngle)}°`;
@@ -930,9 +960,7 @@ function onPoseResults(results) {
 
             if (landmarks[24] && landmarks[26] && landmarks[28]) {
                 const rightKneeAngle = calculateAngle(
-                    landmarks[24], // Right hip
-                    landmarks[26], // Right knee
-                    landmarks[28]  // Right ankle
+                    landmarks[24], landmarks[26], landmarks[28]
                 );
                 document.getElementById('rightKnee').innerHTML = 
                     `${Math.round(rightKneeAngle)}°`;
@@ -946,7 +974,7 @@ function onPoseResults(results) {
         // ==================== BODY METRICS CALCULATIONS ====================
 
         function calculateBodyMetrics(landmarks) {
-            // Body height (nose to ankle average)
+            // Body height
             if (landmarks[0] && landmarks[27] && landmarks[28]) {
                 const leftHeight = calculateDistance(landmarks[0], landmarks[27]);
                 const rightHeight = calculateDistance(landmarks[0], landmarks[28]);
@@ -985,7 +1013,7 @@ function onPoseResults(results) {
                     `${torsoLength.toFixed(3)} u`;
             }
 
-            // Leg length (average)
+            // Leg length
             if (landmarks[23] && landmarks[27] && landmarks[24] && landmarks[28]) {
                 const leftLegLength = calculateDistance(landmarks[23], landmarks[27]);
                 const rightLegLength = calculateDistance(landmarks[24], landmarks[28]);
@@ -1004,6 +1032,10 @@ function onPoseResults(results) {
                     initializePose();
                 }
 
+                if (!threeScene) {
+                    initThreeJS();
+                }
+
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { 
                         width: { ideal: 1280 },
@@ -1018,7 +1050,7 @@ function onPoseResults(results) {
                     videoElement.onloadedmetadata = () => resolve();
                 });
 
-                camera = new Camera(videoElement, {
+                mediaPipeCamera = new Camera(videoElement, {
                     onFrame: async () => {
                         if (isTracking) {
                             await pose.send({ image: videoElement });
@@ -1028,7 +1060,7 @@ function onPoseResults(results) {
                     height: 720
                 });
 
-                await camera.start();
+                await mediaPipeCamera.start();
                 isTracking = true;
                 statusText.textContent = '✅ Tracking Active - Move to see real-time analysis!';
                 statusText.style.color = '#4CAF50';
@@ -1046,8 +1078,8 @@ function onPoseResults(results) {
         function stopTracking() {
             isTracking = false;
             
-            if (camera) {
-                camera.stop();
+            if (mediaPipeCamera) {
+                mediaPipeCamera.stop();
             }
             
             if (videoElement.srcObject) {
@@ -1088,6 +1120,12 @@ function onPoseResults(results) {
             toggleConnectionsButton.classList.toggle('active');
         }
 
+        function toggle3DModel() {
+            show3DModel = !show3DModel;
+            toggle3DModelButton.classList.toggle('active');
+            threejsCanvas.style.display = show3DModel ? 'block' : 'none';
+        }
+
         // ==================== EVENT LISTENERS ====================
 
         startButton.addEventListener('click', startTracking);
@@ -1095,15 +1133,28 @@ function onPoseResults(results) {
         toggleSkeletonButton.addEventListener('click', toggleSkeleton);
         toggleAnglesButton.addEventListener('click', toggleAngles);
         toggleConnectionsButton.addEventListener('click', toggleConnections);
+        toggle3DModelButton.addEventListener('click', toggle3DModel);
 
-        // Initialize button states
+        // Window resize handler
+        window.addEventListener('resize', () => {
+            if (threeRenderer && threeCamera) {
+                const width = threejsCanvas.parentElement.offsetWidth;
+                const height = threejsCanvas.parentElement.offsetHeight;
+                threeRenderer.setSize(width, height);
+                threeCamera.aspect = width / height;
+                threeCamera.updateProjectionMatrix();
+            }
+        });
+
+        // Initialize
         window.addEventListener('load', () => {
             statusText.textContent = '✨ Ready to start advanced body tracking';
             stopButton.disabled = true;
             toggleConnectionsButton.classList.add('active');
+            initThreeJS();
         });
 
-        // Cleanup on page unload
+        // Cleanup
         window.addEventListener('beforeunload', () => {
             if (isTracking) {
                 stopTracking();
@@ -1112,3 +1163,4 @@ function onPoseResults(results) {
     </script>
 </body>
 </html>
+
