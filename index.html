@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Body Tracking with Proportional Scaling</title>
+    <title>Bahubali Armour Body Tracking</title>
     <style>
         * {
             box-sizing: border-box;
@@ -137,20 +137,6 @@
             overflow-y: auto;
         }
 
-        .metrics-panel::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .metrics-panel::-webkit-scrollbar-track {
-            background: rgba(255,255,255,0.1);
-            border-radius: 10px;
-        }
-
-        .metrics-panel::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,0.3);
-            border-radius: 10px;
-        }
-
         .metric-card {
             background: rgba(255,255,255,0.15);
             backdrop-filter: blur(10px);
@@ -197,11 +183,6 @@
             backdrop-filter: blur(10px);
         }
 
-        #statusText {
-            font-size: 16px;
-            margin-bottom: 10px;
-        }
-
         .angle-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -234,22 +215,11 @@
                 max-height: none;
             }
         }
-
-        @media (max-width: 768px) {
-            h1 {
-                font-size: 1.5em;
-            }
-            
-            button {
-                padding: 10px 18px;
-                font-size: 14px;
-            }
-        }
     </style>
 </head>
 <body>
     <div class="app-container">
-        <h1>🎯 Body Tracking with Proportional 3D Model</h1>
+        <h1>⚔️ Bahubali Armour Body Tracking</h1>
         
         <div class="main-grid">
             <div class="video-section">
@@ -264,22 +234,17 @@
                     <button id="startButton">▶ Start Tracking</button>
                     <button id="stopButton">⏹ Stop Tracking</button>
                     <button id="toggleSkeleton" class="active">👤 Skeleton</button>
-                    <button id="toggleAngles">📐 Angles</button>
                     <button id="toggleConnections" class="active">🔗 Connections</button>
-                    <button id="toggle3DModel" class="active">🎭 3D Model</button>
-                    <button id="toggleScaling" class="active">📏 Auto-Scale</button>
+                    <button id="toggle3DModel" class="active">🎭 Show Armour</button>
                 </div>
 
                 <div class="status-card">
-                    <div id="statusText">Click "Start Tracking" to begin</div>
+                    <div id="statusText">Click "Start Tracking" to wear the armour</div>
                     <div style="margin-top: 8px;">
                         Landmarks: <span id="landmarkCount" style="color: #4CAF50; font-weight: bold;">0</span>/33
                     </div>
                     <div style="margin-top: 8px;">
-                        <span id="modelStatus" style="color: #FFA726;">Model: Not Loaded</span>
-                    </div>
-                    <div style="margin-top: 8px;">
-                        <span id="scalingStatus" style="color: #2196F3;">Scaling: Enabled</span>
+                        <span id="modelStatus" style="color: #FFA726;">Armour: Not Loaded</span>
                     </div>
                 </div>
             </div>
@@ -306,22 +271,22 @@
                 </div>
 
                 <div class="metric-card">
-                    <h3>🎯 Model Scaling</h3>
+                    <h3>🎯 Armour Position</h3>
                     <div class="metric-row">
-                        <span class="metric-label">Scale X</span>
-                        <span class="metric-value" id="scaleX">--</span>
+                        <span class="metric-label">Position X</span>
+                        <span class="metric-value" id="posX">--</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Scale Y</span>
-                        <span class="metric-value" id="scaleY">--</span>
+                        <span class="metric-label">Position Y</span>
+                        <span class="metric-value" id="posY">--</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Scale Z</span>
-                        <span class="metric-value" id="scaleZ">--</span>
+                        <span class="metric-label">Position Z</span>
+                        <span class="metric-value" id="posZ">--</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Status</span>
-                        <span class="metric-value" id="scaleStatus">Pending</span>
+                        <span class="metric-label">Scale</span>
+                        <span class="metric-value" id="modelScale">--</span>
                     </div>
                 </div>
 
@@ -388,7 +353,7 @@
         </div>
     </div>
 
-    <!-- Three.js Library r128 -->
+    <!-- Three.js Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
@@ -404,10 +369,8 @@
         let mediaPipeCamera = null;
         let isTracking = false;
         let showSkeleton = true;
-        let showAngles = false;
         let showConnections = true;
         let show3DModel = true;
-        let enableScaling = true;
 
         // Performance tracking
         let frameCount = 0;
@@ -418,108 +381,35 @@
         let previousLandmarks = null;
         let previousTimestamp = 0;
 
-        // Landmark smoothing for jitter reduction
+        // Landmark smoothing
         let smoothedLandmarks = null;
-        const SMOOTHING_FACTOR = 0.5; // 0 = no smoothing, 1 = maximum smoothing
+        const SMOOTHING_FACTOR = 0.5;
 
         // ==================== THREE.JS SETUP ====================
         let threeScene, threeCamera, threeRenderer;
-        let model3D, skeleton, bones = {};
+        let model3D, waistBone;
         let modelLoaded = false;
 
-        // Scaling state
-        let bodyScaleCalculated = false;
-        let modelScale = { x: 1, y: 1, z: 1 };
-        let boneScalesCalculated = false;
-        let framesSinceScaling = 0;
-        const FRAMES_BEFORE_SCALING = 30; // Wait for stable tracking
+        // Model scale (adjust this to fit your body size)
+        let MODEL_SCALE = 2.0;
 
         // MediaPipe landmark indices
         const POSE_LANDMARKS = {
             NOSE: 0,
-            LEFT_EYE_INNER: 1,
-            LEFT_EYE: 2,
-            LEFT_EYE_OUTER: 3,
-            RIGHT_EYE_INNER: 4,
-            RIGHT_EYE: 5,
-            RIGHT_EYE_OUTER: 6,
-            LEFT_EAR: 7,
-            RIGHT_EAR: 8,
-            MOUTH_LEFT: 9,
-            MOUTH_RIGHT: 10,
             LEFT_SHOULDER: 11,
             RIGHT_SHOULDER: 12,
             LEFT_ELBOW: 13,
             RIGHT_ELBOW: 14,
             LEFT_WRIST: 15,
             RIGHT_WRIST: 16,
-            LEFT_PINKY: 17,
-            RIGHT_PINKY: 18,
-            LEFT_INDEX: 19,
-            RIGHT_INDEX: 20,
-            LEFT_THUMB: 21,
-            RIGHT_THUMB: 22,
             LEFT_HIP: 23,
             RIGHT_HIP: 24,
             LEFT_KNEE: 25,
             RIGHT_KNEE: 26,
             LEFT_ANKLE: 27,
             RIGHT_ANKLE: 28,
-            LEFT_HEEL: 29,
-            RIGHT_HEEL: 30,
             LEFT_FOOT_INDEX: 31,
             RIGHT_FOOT_INDEX: 32
-        };
-
-        // Complete Rigify bone mapping
-        const boneMapping = {
-            root: 'root',
-            hips: 'DEF-spine',
-            spine: 'DEF-spine001',
-            spine1: 'DEF-spine002',
-            chest: 'DEF-spine003',
-            neck: 'DEF-spine004',
-            neck1: 'DEF-spine005',
-            head: 'DEF-spine006',
-            leftShoulder: 'DEF-shoulderL',
-            leftUpperArm: 'DEF-upper_armL',
-            leftUpperArm1: 'DEF-upper_armL001',
-            leftLowerArm: 'DEF-forearmL',
-            leftLowerArm1: 'DEF-forearmL001',
-            leftHand: 'DEF-handL',
-            rightShoulder: 'DEF-shoulderR',
-            rightUpperArm: 'DEF-upper_armR',
-            rightUpperArm1: 'DEF-upper_armR001',
-            rightLowerArm: 'DEF-forearmR',
-            rightLowerArm1: 'DEF-forearmR001',
-            rightHand: 'DEF-handR',
-            leftUpperLeg: 'DEF-thighL',
-            leftUpperLeg1: 'DEF-thighL001',
-            leftLowerLeg: 'DEF-shinL',
-            leftLowerLeg1: 'DEF-shinL001',
-            leftFoot: 'DEF-footL',
-            leftToe: 'DEF-toeL',
-            rightUpperLeg: 'DEF-thighR',
-            rightUpperLeg1: 'DEF-thighR001',
-            rightLowerLeg: 'DEF-shinR',
-            rightLowerLeg1: 'DEF-shinR001',
-            rightFoot: 'DEF-footR',
-            rightToe: 'DEF-toeR',
-            leftEye: 'DEF-eyeL',
-            rightEye: 'DEF-eyeR',
-            nose: 'DEF-nose',
-            jaw: 'DEF-jaw_master'
-        };
-
-        // Model bone measurements (will be auto-detected)
-        let modelMeasurements = {
-            shoulderWidth: 0.4,
-            torsoHeight: 0.6,
-            upperArmL: 0.28,
-            forearmL: 0.25,
-            thighL: 0.45,
-            shinL: 0.45,
-            detected: false
         };
 
         // ==================== DOM ELEMENTS ====================
@@ -531,16 +421,13 @@
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
         const toggleSkeletonButton = document.getElementById('toggleSkeleton');
-        const toggleAnglesButton = document.getElementById('toggleAngles');
         const toggleConnectionsButton = document.getElementById('toggleConnections');
         const toggle3DModelButton = document.getElementById('toggle3DModel');
-        const toggleScalingButton = document.getElementById('toggleScaling');
         
         const statusText = document.getElementById('statusText');
         const landmarkCount = document.getElementById('landmarkCount');
         const fpsCounter = document.getElementById('fpsCounter');
         const modelStatus = document.getElementById('modelStatus');
-        const scalingStatus = document.getElementById('scalingStatus');
 
         // ==================== THREE.JS INITIALIZATION ====================
         function initThreeJS() {
@@ -560,14 +447,14 @@
             threeRenderer.setSize(container.offsetWidth, container.offsetHeight);
             threeRenderer.setClearColor(0x000000, 0);
             
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             threeScene.add(ambientLight);
             
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
             directionalLight.position.set(1, 2, 1);
             threeScene.add(directionalLight);
             
-            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
             directionalLight2.position.set(-1, 1, -1);
             threeScene.add(directionalLight2);
             
@@ -575,7 +462,6 @@
         }
 
         function loadGLBModel() {
-            // REPLACE THIS PATH WITH YOUR ACTUAL GLB FILE
             const modelPath = './armour_bahubali.glb';
             
             const loader = new THREE.GLTFLoader();
@@ -585,110 +471,35 @@
                     model3D = gltf.scene;
                     threeScene.add(model3D);
                     
+                    // Find the waist_bone
                     model3D.traverse((object) => {
-                        if (object.isBone) {
-                            bones[object.name] = object;
+                        if (object.isBone && object.name === 'waist_bone') {
+                            waistBone = object;
+                            console.log('✅ Found waist_bone:', object);
                         }
                     });
                     
                     modelLoaded = true;
-                    modelStatus.textContent = 'Model: ✅ Loaded';
+                    modelStatus.textContent = 'Armour: ✅ Loaded';
                     modelStatus.style.color = '#4CAF50';
                     
-                    console.log('✅ Model loaded successfully');
-                    console.log('📊 Available bones:', Object.keys(bones).length);
-                    console.log('🎯 Mapped bones:', Object.keys(boneMapping).length);
+                    console.log('✅ Bahubali Armour loaded successfully');
+                    console.log('🎯 waist_bone:', waistBone ? 'Found' : 'Not Found');
                     
-                    // Auto-detect model measurements
-                    detectModelMeasurements();
-                    
-                    model3D.scale.set(1, 1, 1);
+                    // Set initial scale
+                    model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
                     model3D.position.set(0, 0, 0);
                 },
                 function(xhr) {
                     const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
-                    modelStatus.textContent = `Model: Loading ${percent}%`;
+                    modelStatus.textContent = `Armour: Loading ${percent}%`;
                 },
                 function(error) {
-                    console.error('❌ Error loading model:', error);
-                    modelStatus.textContent = 'Model: ❌ Load Failed';
+                    console.error('❌ Error loading armour:', error);
+                    modelStatus.textContent = 'Armour: ❌ Load Failed';
                     modelStatus.style.color = '#FF5252';
                 }
             );
-        }
-
-        // ==================== AUTO-DETECT MODEL MEASUREMENTS ====================
-        function detectModelMeasurements() {
-            if (!bones || Object.keys(bones).length === 0) {
-                console.warn('⚠️ No bones found for measurement');
-                return;
-            }
-            
-            try {
-                // Measure shoulder width
-                if (bones[boneMapping.leftShoulder] && bones[boneMapping.rightShoulder]) {
-                    const leftPos = new THREE.Vector3();
-                    const rightPos = new THREE.Vector3();
-                    bones[boneMapping.leftShoulder].getWorldPosition(leftPos);
-                    bones[boneMapping.rightShoulder].getWorldPosition(rightPos);
-                    modelMeasurements.shoulderWidth = leftPos.distanceTo(rightPos);
-                }
-                
-                // Measure bone lengths by getting parent-child distances
-                if (bones[boneMapping.leftUpperArm] && bones[boneMapping.leftLowerArm]) {
-                    const upperPos = new THREE.Vector3();
-                    const lowerPos = new THREE.Vector3();
-                    bones[boneMapping.leftUpperArm].getWorldPosition(upperPos);
-                    bones[boneMapping.leftLowerArm].getWorldPosition(lowerPos);
-                    modelMeasurements.upperArmL = upperPos.distanceTo(lowerPos);
-                }
-                
-                if (bones[boneMapping.leftLowerArm] && bones[boneMapping.leftHand]) {
-                    const forearmPos = new THREE.Vector3();
-                    const handPos = new THREE.Vector3();
-                    bones[boneMapping.leftLowerArm].getWorldPosition(forearmPos);
-                    bones[boneMapping.leftHand].getWorldPosition(handPos);
-                    modelMeasurements.forearmL = forearmPos.distanceTo(handPos);
-                }
-                
-                if (bones[boneMapping.leftUpperLeg] && bones[boneMapping.leftLowerLeg]) {
-                    const thighPos = new THREE.Vector3();
-                    const shinPos = new THREE.Vector3();
-                    bones[boneMapping.leftUpperLeg].getWorldPosition(thighPos);
-                    bones[boneMapping.leftLowerLeg].getWorldPosition(shinPos);
-                    modelMeasurements.thighL = thighPos.distanceTo(shinPos);
-                }
-                
-                if (bones[boneMapping.leftLowerLeg] && bones[boneMapping.leftFoot]) {
-                    const shinPos = new THREE.Vector3();
-                    const footPos = new THREE.Vector3();
-                    bones[boneMapping.leftLowerLeg].getWorldPosition(shinPos);
-                    bones[boneMapping.leftFoot].getWorldPosition(footPos);
-                    modelMeasurements.shinL = shinPos.distanceTo(footPos);
-                }
-                
-                if (bones[boneMapping.chest] && bones[boneMapping.hips]) {
-                    const chestPos = new THREE.Vector3();
-                    const hipsPos = new THREE.Vector3();
-                    bones[boneMapping.chest].getWorldPosition(chestPos);
-                    bones[boneMapping.hips].getWorldPosition(hipsPos);
-                    modelMeasurements.torsoHeight = chestPos.distanceTo(hipsPos);
-                }
-                
-                modelMeasurements.detected = true;
-                
-                console.log('📐 Model measurements detected:');
-                console.log('  Shoulder Width:', modelMeasurements.shoulderWidth.toFixed(3));
-                console.log('  Torso Height:', modelMeasurements.torsoHeight.toFixed(3));
-                console.log('  Upper Arm:', modelMeasurements.upperArmL.toFixed(3));
-                console.log('  Forearm:', modelMeasurements.forearmL.toFixed(3));
-                console.log('  Thigh:', modelMeasurements.thighL.toFixed(3));
-                console.log('  Shin:', modelMeasurements.shinL.toFixed(3));
-                
-            } catch (error) {
-                console.warn('⚠️ Could not auto-detect all measurements:', error);
-                console.log('💡 Using default measurements');
-            }
         }
 
         // ==================== LANDMARK SMOOTHING ====================
@@ -706,166 +517,6 @@
                     visibility: landmark.visibility
                 };
             });
-        }
-
-        // ==================== BODY SCALING ====================
-        function calculateBodyScale(landmarks) {
-            if (!enableScaling || !modelLoaded || !modelMeasurements.detected) return;
-            if (bodyScaleCalculated) return;
-            
-            // Wait for stable tracking
-            framesSinceScaling++;
-            if (framesSinceScaling < FRAMES_BEFORE_SCALING) {
-                document.getElementById('scaleStatus').textContent = 
-                    `Calibrating... ${framesSinceScaling}/${FRAMES_BEFORE_SCALING}`;
-                return;
-            }
-            
-            try {
-                // Calculate user's body measurements
-                const userMeasurements = {
-                    shoulderWidth: calculateDistance(landmarks[11], landmarks[12]),
-                    torsoHeight: calculateDistance(
-                        { x: (landmarks[11].x + landmarks[12].x) / 2,
-                          y: (landmarks[11].y + landmarks[12].y) / 2,
-                          z: (landmarks[11].z + landmarks[12].z) / 2 },
-                        { x: (landmarks[23].x + landmarks[24].x) / 2,
-                          y: (landmarks[23].y + landmarks[24].y) / 2,
-                          z: (landmarks[23].z + landmarks[24].z) / 2 }
-                    ),
-                    leftArmLength: calculateDistance(landmarks[11], landmarks[13]) + 
-                                   calculateDistance(landmarks[13], landmarks[15]),
-                    leftLegLength: calculateDistance(landmarks[23], landmarks[25]) + 
-                                  calculateDistance(landmarks[25], landmarks[27])
-                };
-                
-                // Calculate scaling factors with safety limits
-                const scaleX = Math.min(Math.max(
-                    userMeasurements.shoulderWidth / modelMeasurements.shoulderWidth, 
-                    0.5), 3.0);
-                
-                const scaleY = Math.min(Math.max(
-                    (userMeasurements.torsoHeight + userMeasurements.leftLegLength) / 
-                    (modelMeasurements.torsoHeight + modelMeasurements.thighL + modelMeasurements.shinL), 
-                    0.5), 3.0);
-                
-                const scaleZ = scaleX;
-                
-                // Apply scaling with adjustment factor
-                modelScale.x = scaleX * 2.5;
-                modelScale.y = scaleY * 2.5;
-                modelScale.z = scaleZ * 2.5;
-                
-                model3D.scale.set(modelScale.x, modelScale.y, modelScale.z);
-                
-                bodyScaleCalculated = true;
-                
-                // Update UI
-                document.getElementById('scaleX').textContent = modelScale.x.toFixed(2);
-                document.getElementById('scaleY').textContent = modelScale.y.toFixed(2);
-                document.getElementById('scaleZ').textContent = modelScale.z.toFixed(2);
-                document.getElementById('scaleStatus').textContent = '✅ Calibrated';
-                
-                console.log('✅ Body scale calculated:');
-                console.log('  Scale:', modelScale);
-                console.log('  User measurements:', userMeasurements);
-                
-            } catch (error) {
-                console.error('❌ Error calculating body scale:', error);
-            }
-        }
-
-        function scaleIndividualBones(landmarks) {
-            if (!enableScaling || !modelLoaded || !bodyScaleCalculated) return;
-            if (boneScalesCalculated) return;
-            
-            try {
-                // Calculate user's limb segment lengths
-                const userLengths = {
-                    leftUpperArm: calculateDistance(landmarks[11], landmarks[13]),
-                    leftForearm: calculateDistance(landmarks[13], landmarks[15]),
-                    leftThigh: calculateDistance(landmarks[23], landmarks[25]),
-                    leftShin: calculateDistance(landmarks[25], landmarks[27])
-                };
-                
-                // Individual bone scaling at 50% strength to avoid mesh distortion
-                const BONE_SCALE_STRENGTH = 0.5;
-                
-                // Scale left upper arm
-                if (bones[boneMapping.leftUpperArm]) {
-                    const targetScale = userLengths.leftUpperArm / modelMeasurements.upperArmL * 2.5;
-                    const finalScale = 1 + (targetScale - 1) * BONE_SCALE_STRENGTH;
-                    bones[boneMapping.leftUpperArm].scale.y = finalScale;
-                    if (bones[boneMapping.leftUpperArm1]) {
-                        bones[boneMapping.leftUpperArm1].scale.y = finalScale;
-                    }
-                }
-                
-                // Scale left forearm
-                if (bones[boneMapping.leftLowerArm]) {
-                    const targetScale = userLengths.leftForearm / modelMeasurements.forearmL * 2.5;
-                    const finalScale = 1 + (targetScale - 1) * BONE_SCALE_STRENGTH;
-                    bones[boneMapping.leftLowerArm].scale.y = finalScale;
-                    if (bones[boneMapping.leftLowerArm1]) {
-                        bones[boneMapping.leftLowerArm1].scale.y = finalScale;
-                    }
-                }
-                
-                // Scale left thigh
-                if (bones[boneMapping.leftUpperLeg]) {
-                    const targetScale = userLengths.leftThigh / modelMeasurements.thighL * 2.5;
-                    const finalScale = 1 + (targetScale - 1) * BONE_SCALE_STRENGTH;
-                    bones[boneMapping.leftUpperLeg].scale.y = finalScale;
-                    if (bones[boneMapping.leftUpperLeg1]) {
-                        bones[boneMapping.leftUpperLeg1].scale.y = finalScale;
-                    }
-                }
-                
-                // Scale left shin
-                if (bones[boneMapping.leftLowerLeg]) {
-                    const targetScale = userLengths.leftShin / modelMeasurements.shinL * 2.5;
-                    const finalScale = 1 + (targetScale - 1) * BONE_SCALE_STRENGTH;
-                    bones[boneMapping.leftLowerLeg].scale.y = finalScale;
-                    if (bones[boneMapping.leftLowerLeg1]) {
-                        bones[boneMapping.leftLowerLeg1].scale.y = finalScale;
-                    }
-                }
-                
-                // Mirror scales to right side
-                if (bones[boneMapping.rightUpperArm] && bones[boneMapping.leftUpperArm]) {
-                    bones[boneMapping.rightUpperArm].scale.copy(bones[boneMapping.leftUpperArm].scale);
-                    if (bones[boneMapping.rightUpperArm1] && bones[boneMapping.leftUpperArm1]) {
-                        bones[boneMapping.rightUpperArm1].scale.copy(bones[boneMapping.leftUpperArm1].scale);
-                    }
-                }
-                
-                if (bones[boneMapping.rightLowerArm] && bones[boneMapping.leftLowerArm]) {
-                    bones[boneMapping.rightLowerArm].scale.copy(bones[boneMapping.leftLowerArm].scale);
-                    if (bones[boneMapping.rightLowerArm1] && bones[boneMapping.leftLowerArm1]) {
-                        bones[boneMapping.rightLowerArm1].scale.copy(bones[boneMapping.leftLowerArm1].scale);
-                    }
-                }
-                
-                if (bones[boneMapping.rightUpperLeg] && bones[boneMapping.leftUpperLeg]) {
-                    bones[boneMapping.rightUpperLeg].scale.copy(bones[boneMapping.leftUpperLeg].scale);
-                    if (bones[boneMapping.rightUpperLeg1] && bones[boneMapping.leftUpperLeg1]) {
-                        bones[boneMapping.rightUpperLeg1].scale.copy(bones[boneMapping.leftUpperLeg1].scale);
-                    }
-                }
-                
-                if (bones[boneMapping.rightLowerLeg] && bones[boneMapping.leftLowerLeg]) {
-                    bones[boneMapping.rightLowerLeg].scale.copy(bones[boneMapping.leftLowerLeg].scale);
-                    if (bones[boneMapping.rightLowerLeg1] && bones[boneMapping.leftLowerLeg1]) {
-                        bones[boneMapping.rightLowerLeg1].scale.copy(bones[boneMapping.leftLowerLeg1].scale);
-                    }
-                }
-                
-                boneScalesCalculated = true;
-                console.log('✅ Individual bone scaling complete (50% strength)');
-                
-            } catch (error) {
-                console.error('❌ Error scaling individual bones:', error);
-            }
         }
 
         // ==================== UTILITY FUNCTIONS ====================
@@ -927,250 +578,39 @@
             else return "Transitioning";
         }
 
-        function drawAngle(ctx, midPoint, angle, color = '#FFD700') {
-            if (!showAngles) return;
-            const x = midPoint.x * canvasElement.width;
-            const y = midPoint.y * canvasElement.height;
-            const radius = 30;
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(x, y, radius, 0, 2 * Math.PI);
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.fillStyle = color;
-            ctx.font = 'bold 16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(`${Math.round(angle)}°`, x, y - radius - 10);
-            ctx.restore();
-        }
-
-        // ==================== BONE ANIMATION ====================
+        // ==================== APPLY POSE TO ARMOUR ====================
         function applyPoseToModel(poseLandmarks) {
-            if (!modelLoaded || !model3D || !bones || !poseLandmarks || !show3DModel) return;
+            if (!modelLoaded || !model3D || !poseLandmarks || !show3DModel) return;
             
             try {
                 const landmarks = poseLandmarks;
                 
-                // Position model at hip center
+                // Calculate hip center (waist position)
                 if (landmarks[23] && landmarks[24]) {
                     const hipMidX = (landmarks[23].x + landmarks[24].x) / 2;
                     const hipMidY = (landmarks[23].y + landmarks[24].y) / 2;
                     const hipMidZ = (landmarks[23].z + landmarks[24].z) / 2;
                     
-                    model3D.position.set(
-                        -(hipMidX * 2 - 1) * 2,
-                        -(hipMidY * 2 - 1) * 2,
-                        -hipMidZ * 3
-                    );
-                }
-
-                // SPINE/TORSO
-                if (bones[boneMapping.spine] && landmarks[23] && landmarks[24] && landmarks[11] && landmarks[12]) {
-                    const hipMid = new THREE.Vector3(
-                        (landmarks[23].x + landmarks[24].x) / 2,
-                        (landmarks[23].y + landmarks[24].y) / 2,
-                        (landmarks[23].z + landmarks[24].z) / 2
-                    );
-                    const shoulderMid = new THREE.Vector3(
-                        (landmarks[11].x + landmarks[12].x) / 2,
-                        (landmarks[11].y + landmarks[12].y) / 2,
-                        (landmarks[11].z + landmarks[12].z) / 2
-                    );
+                    // Convert MediaPipe coordinates to Three.js coordinates
+                    const posX = -(hipMidX * 2 - 1) * 2;
+                    const posY = -(hipMidY * 2 - 1) * 2;
+                    const posZ = -hipMidZ * 3;
                     
-                    const spineDir = new THREE.Vector3().subVectors(shoulderMid, hipMid).normalize();
-                    const upVector = new THREE.Vector3(0, 1, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(upVector, spineDir);
+                    // Position the entire model at hip center
+                    model3D.position.set(posX, posY, posZ);
                     
-                    if (bones[boneMapping.spine]) bones[boneMapping.spine].quaternion.slerp(quaternion, 0.3);
-                    if (bones[boneMapping.spine1]) bones[boneMapping.spine1].quaternion.slerp(quaternion, 0.25);
-                    if (bones[boneMapping.chest]) bones[boneMapping.chest].quaternion.slerp(quaternion, 0.2);
+                    // Update UI
+                    document.getElementById('posX').textContent = posX.toFixed(2);
+                    document.getElementById('posY').textContent = posY.toFixed(2);
+                    document.getElementById('posZ').textContent = posZ.toFixed(2);
+                    document.getElementById('modelScale').textContent = MODEL_SCALE.toFixed(1) + 'x';
                 }
 
-                // HEAD
-                if (bones[boneMapping.head] && landmarks[0] && landmarks[11] && landmarks[12]) {
-                    const nose = landmarks[0];
-                    const shoulderMid = new THREE.Vector3(
-                        (landmarks[11].x + landmarks[12].x) / 2,
-                        (landmarks[11].y + landmarks[12].y) / 2,
-                        (landmarks[11].z + landmarks[12].z) / 2
-                    );
-                    const noseVec = new THREE.Vector3(nose.x, nose.y, nose.z);
-                    
-                    const headDir = new THREE.Vector3().subVectors(noseVec, shoulderMid).normalize();
-                    const upVector = new THREE.Vector3(0, 1, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(upVector, headDir);
-                    
-                    if (bones[boneMapping.neck]) bones[boneMapping.neck].quaternion.slerp(quaternion, 0.25);
-                    if (bones[boneMapping.neck1]) bones[boneMapping.neck1].quaternion.slerp(quaternion, 0.3);
-                    if (bones[boneMapping.head]) bones[boneMapping.head].quaternion.slerp(quaternion, 0.35);
-                }
-
-                // RIGHT ARM
-                if (bones[boneMapping.rightShoulder] && landmarks[12] && landmarks[24]) {
-                    const shoulder = landmarks[12];
-                    const hip = landmarks[24];
-                    const shoulderVec = new THREE.Vector3(shoulder.x, shoulder.y, shoulder.z);
-                    const hipVec = new THREE.Vector3(hip.x, hip.y, hip.z);
-                    const shoulderDir = new THREE.Vector3().subVectors(shoulderVec, hipVec).normalize();
-                    const sideVector = new THREE.Vector3(1, 0, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(sideVector, shoulderDir);
-                    bones[boneMapping.rightShoulder].quaternion.slerp(quaternion, 0.3);
-                }
-                
-                if (bones[boneMapping.rightUpperArm] && landmarks[12] && landmarks[14]) {
-                    const shoulder = landmarks[12];
-                    const elbow = landmarks[14];
-                    const shoulderVec = new THREE.Vector3(shoulder.x, shoulder.y, shoulder.z);
-                    const elbowVec = new THREE.Vector3(elbow.x, elbow.y, elbow.z);
-                    const armDir = new THREE.Vector3().subVectors(elbowVec, shoulderVec).normalize();
-                    const sideVector = new THREE.Vector3(1, 0, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(sideVector, armDir);
-                    bones[boneMapping.rightUpperArm].quaternion.slerp(quaternion, 0.3);
-                    if (bones[boneMapping.rightUpperArm1]) {
-                        bones[boneMapping.rightUpperArm1].quaternion.slerp(quaternion, 0.25);
-                    }
-                }
-                
-                if (bones[boneMapping.rightLowerArm] && landmarks[14] && landmarks[16]) {
-                    const elbow = landmarks[14];
-                    const wrist = landmarks[16];
-                    const elbowVec = new THREE.Vector3(elbow.x, elbow.y, elbow.z);
-                    const wristVec = new THREE.Vector3(wrist.x, wrist.y, wrist.z);
-                    const forearmDir = new THREE.Vector3().subVectors(wristVec, elbowVec).normalize();
-                    const sideVector = new THREE.Vector3(1, 0, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(sideVector, forearmDir);
-                    bones[boneMapping.rightLowerArm].quaternion.slerp(quaternion, 0.3);
-                    if (bones[boneMapping.rightLowerArm1]) {
-                        bones[boneMapping.rightLowerArm1].quaternion.slerp(quaternion, 0.25);
-                    }
-                }
-
-                // LEFT ARM
-                if (bones[boneMapping.leftShoulder] && landmarks[11] && landmarks[23]) {
-                    const shoulder = landmarks[11];
-                    const hip = landmarks[23];
-                    const shoulderVec = new THREE.Vector3(shoulder.x, shoulder.y, shoulder.z);
-                    const hipVec = new THREE.Vector3(hip.x, hip.y, hip.z);
-                    const shoulderDir = new THREE.Vector3().subVectors(shoulderVec, hipVec).normalize();
-                    const sideVector = new THREE.Vector3(-1, 0, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(sideVector, shoulderDir);
-                    bones[boneMapping.leftShoulder].quaternion.slerp(quaternion, 0.3);
-                }
-                
-                if (bones[boneMapping.leftUpperArm] && landmarks[11] && landmarks[13]) {
-                    const shoulder = landmarks[11];
-                    const elbow = landmarks[13];
-                    const shoulderVec = new THREE.Vector3(shoulder.x, shoulder.y, shoulder.z);
-                    const elbowVec = new THREE.Vector3(elbow.x, elbow.y, elbow.z);
-                    const armDir = new THREE.Vector3().subVectors(elbowVec, shoulderVec).normalize();
-                    const sideVector = new THREE.Vector3(-1, 0, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(sideVector, armDir);
-                    bones[boneMapping.leftUpperArm].quaternion.slerp(quaternion, 0.3);
-                    if (bones[boneMapping.leftUpperArm1]) {
-                        bones[boneMapping.leftUpperArm1].quaternion.slerp(quaternion, 0.25);
-                    }
-                }
-                
-                if (bones[boneMapping.leftLowerArm] && landmarks[13] && landmarks[15]) {
-                    const elbow = landmarks[13];
-                    const wrist = landmarks[15];
-                    const elbowVec = new THREE.Vector3(elbow.x, elbow.y, elbow.z);
-                    const wristVec = new THREE.Vector3(wrist.x, wrist.y, wrist.z);
-                    const forearmDir = new THREE.Vector3().subVectors(wristVec, elbowVec).normalize();
-                    const sideVector = new THREE.Vector3(-1, 0, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(sideVector, forearmDir);
-                    bones[boneMapping.leftLowerArm].quaternion.slerp(quaternion, 0.3);
-                    if (bones[boneMapping.leftLowerArm1]) {
-                        bones[boneMapping.leftLowerArm1].quaternion.slerp(quaternion, 0.25);
-                    }
-                }
-
-                // RIGHT LEG
-                if (bones[boneMapping.rightUpperLeg] && landmarks[24] && landmarks[26]) {
-                    const hip = landmarks[24];
-                    const knee = landmarks[26];
-                    const hipVec = new THREE.Vector3(hip.x, hip.y, hip.z);
-                    const kneeVec = new THREE.Vector3(knee.x, knee.y, knee.z);
-                    const thighDir = new THREE.Vector3().subVectors(kneeVec, hipVec).normalize();
-                    const downVector = new THREE.Vector3(0, -1, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(downVector, thighDir);
-                    bones[boneMapping.rightUpperLeg].quaternion.slerp(quaternion, 0.3);
-                    if (bones[boneMapping.rightUpperLeg1]) {
-                        bones[boneMapping.rightUpperLeg1].quaternion.slerp(quaternion, 0.25);
-                    }
-                }
-                
-                if (bones[boneMapping.rightLowerLeg] && landmarks[26] && landmarks[28]) {
-                    const knee = landmarks[26];
-                    const ankle = landmarks[28];
-                    const kneeVec = new THREE.Vector3(knee.x, knee.y, knee.z);
-                    const ankleVec = new THREE.Vector3(ankle.x, ankle.y, ankle.z);
-                    const shinDir = new THREE.Vector3().subVectors(ankleVec, kneeVec).normalize();
-                    const downVector = new THREE.Vector3(0, -1, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(downVector, shinDir);
-                    bones[boneMapping.rightLowerLeg].quaternion.slerp(quaternion, 0.3);
-                    if (bones[boneMapping.rightLowerLeg1]) {
-                        bones[boneMapping.rightLowerLeg1].quaternion.slerp(quaternion, 0.25);
-                    }
-                }
-                
-                if (bones[boneMapping.rightFoot] && landmarks[28] && landmarks[32]) {
-                    const ankle = landmarks[28];
-                    const footIndex = landmarks[32];
-                    const ankleVec = new THREE.Vector3(ankle.x, ankle.y, ankle.z);
-                    const footVec = new THREE.Vector3(footIndex.x, footIndex.y, footIndex.z);
-                    const footDir = new THREE.Vector3().subVectors(footVec, ankleVec).normalize();
-                    const forwardVector = new THREE.Vector3(0, 0, 1);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(forwardVector, footDir);
-                    bones[boneMapping.rightFoot].quaternion.slerp(quaternion, 0.3);
-                }
-
-                // LEFT LEG
-                if (bones[boneMapping.leftUpperLeg] && landmarks[23] && landmarks[25]) {
-                    const hip = landmarks[23];
-                    const knee = landmarks[25];
-                    const hipVec = new THREE.Vector3(hip.x, hip.y, hip.z);
-                    const kneeVec = new THREE.Vector3(knee.x, knee.y, knee.z);
-                    const thighDir = new THREE.Vector3().subVectors(kneeVec, hipVec).normalize();
-                    const downVector = new THREE.Vector3(0, -1, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(downVector, thighDir);
-                    bones[boneMapping.leftUpperLeg].quaternion.slerp(quaternion, 0.3);
-                    if (bones[boneMapping.leftUpperLeg1]) {
-                        bones[boneMapping.leftUpperLeg1].quaternion.slerp(quaternion, 0.25);
-                    }
-                }
-                
-                if (bones[boneMapping.leftLowerLeg] && landmarks[25] && landmarks[27]) {
-                    const knee = landmarks[25];
-                    const ankle = landmarks[27];
-                    const kneeVec = new THREE.Vector3(knee.x, knee.y, knee.z);
-                    const ankleVec = new THREE.Vector3(ankle.x, ankle.y, ankle.z);
-                    const shinDir = new THREE.Vector3().subVectors(ankleVec, kneeVec).normalize();
-                    const downVector = new THREE.Vector3(0, -1, 0);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(downVector, shinDir);
-                    bones[boneMapping.leftLowerLeg].quaternion.slerp(quaternion, 0.3);
-                    if (bones[boneMapping.leftLowerLeg1]) {
-                        bones[boneMapping.leftLowerLeg1].quaternion.slerp(quaternion, 0.25);
-                    }
-                }
-                
-                if (bones[boneMapping.leftFoot] && landmarks[27] && landmarks[31]) {
-                    const ankle = landmarks[27];
-                    const footIndex = landmarks[31];
-                    const ankleVec = new THREE.Vector3(ankle.x, ankle.y, ankle.z);
-                    const footVec = new THREE.Vector3(footIndex.x, footIndex.y, footIndex.z);
-                    const footDir = new THREE.Vector3().subVectors(footVec, ankleVec).normalize();
-                    const forwardVector = new THREE.Vector3(0, 0, 1);
-                    const quaternion = new THREE.Quaternion().setFromUnitVectors(forwardVector, footDir);
-                    bones[boneMapping.leftFoot].quaternion.slerp(quaternion, 0.3);
-                }
-
+                // Render the scene
                 threeRenderer.render(threeScene, threeCamera);
                 
             } catch (error) {
-                console.error('Error applying pose:', error);
+                console.error('Error applying pose to armour:', error);
             }
         }
 
@@ -1213,7 +653,6 @@
             canvasCtx.restore();
 
             if (results.poseLandmarks) {
-                // Apply landmark smoothing
                 const landmarks = smoothLandmarks(
                     results.poseLandmarks, 
                     smoothedLandmarks, 
@@ -1262,9 +701,7 @@
                 document.getElementById('posture').textContent = posture;
                 landmarkCount.textContent = landmarks.length;
 
-                // Apply scaling and pose
-                calculateBodyScale(landmarks);
-                scaleIndividualBones(landmarks);
+                // Apply armour position
                 applyPoseToModel(landmarks);
             }
         }
@@ -1274,45 +711,37 @@
             if (landmarks[11] && landmarks[13] && landmarks[15]) {
                 const leftShoulderAngle = calculateAngle(landmarks[23], landmarks[11], landmarks[13]);
                 document.getElementById('leftShoulder').innerHTML = `${Math.round(leftShoulderAngle)}°`;
-                if (showAngles) drawAngle(canvasCtx, landmarks[11], leftShoulderAngle, '#2196F3');
 
                 const leftElbowAngle = calculateAngle(landmarks[11], landmarks[13], landmarks[15]);
                 document.getElementById('leftElbow').innerHTML = `${Math.round(leftElbowAngle)}°`;
-                if (showAngles) drawAngle(canvasCtx, landmarks[13], leftElbowAngle, '#2196F3');
             }
 
             if (landmarks[12] && landmarks[14] && landmarks[16]) {
                 const rightShoulderAngle = calculateAngle(landmarks[24], landmarks[12], landmarks[14]);
                 document.getElementById('rightShoulder').innerHTML = `${Math.round(rightShoulderAngle)}°`;
-                if (showAngles) drawAngle(canvasCtx, landmarks[12], rightShoulderAngle, '#FF5722');
 
                 const rightElbowAngle = calculateAngle(landmarks[12], landmarks[14], landmarks[16]);
                 document.getElementById('rightElbow').innerHTML = `${Math.round(rightElbowAngle)}°`;
-                if (showAngles) drawAngle(canvasCtx, landmarks[14], rightElbowAngle, '#FF5722');
             }
 
             if (landmarks[11] && landmarks[23] && landmarks[25]) {
                 const leftHipAngle = calculateAngle(landmarks[11], landmarks[23], landmarks[25]);
                 document.getElementById('leftHip').innerHTML = `${Math.round(leftHipAngle)}°`;
-                if (showAngles) drawAngle(canvasCtx, landmarks[23], leftHipAngle, '#2196F3');
             }
 
             if (landmarks[23] && landmarks[25] && landmarks[27]) {
                 const leftKneeAngle = calculateAngle(landmarks[23], landmarks[25], landmarks[27]);
                 document.getElementById('leftKnee').innerHTML = `${Math.round(leftKneeAngle)}°`;
-                if (showAngles) drawAngle(canvasCtx, landmarks[25], leftKneeAngle, '#2196F3');
             }
 
             if (landmarks[12] && landmarks[24] && landmarks[26]) {
                 const rightHipAngle = calculateAngle(landmarks[12], landmarks[24], landmarks[26]);
                 document.getElementById('rightHip').innerHTML = `${Math.round(rightHipAngle)}°`;
-                if (showAngles) drawAngle(canvasCtx, landmarks[24], rightHipAngle, '#FF5722');
             }
 
             if (landmarks[24] && landmarks[26] && landmarks[28]) {
                 const rightKneeAngle = calculateAngle(landmarks[24], landmarks[26], landmarks[28]);
                 document.getElementById('rightKnee').innerHTML = `${Math.round(rightKneeAngle)}°`;
-                if (showAngles) drawAngle(canvasCtx, landmarks[26], rightKneeAngle, '#FF5722');
             }
         }
 
@@ -1390,7 +819,7 @@
 
                 await mediaPipeCamera.start();
                 isTracking = true;
-                statusText.textContent = '✅ Tracking Active - Stand still for 2 seconds to calibrate';
+                statusText.textContent = '✅ Tracking Active - Armour following your waist!';
                 statusText.style.color = '#4CAF50';
                 
                 startButton.disabled = true;
@@ -1427,21 +856,11 @@
             document.querySelectorAll('.angle-item div:not(strong)').forEach(el => {
                 el.innerHTML = '-- °';
             });
-            
-            // Reset scaling state
-            bodyScaleCalculated = false;
-            boneScalesCalculated = false;
-            framesSinceScaling = 0;
         }
 
         function toggleSkeleton() {
             showSkeleton = !showSkeleton;
             toggleSkeletonButton.classList.toggle('active');
-        }
-
-        function toggleAngles() {
-            showAngles = !showAngles;
-            toggleAnglesButton.classList.toggle('active');
         }
 
         function toggleConnections() {
@@ -1455,28 +874,25 @@
             threejsCanvas.style.display = show3DModel ? 'block' : 'none';
         }
 
-        function toggleScaling() {
-            enableScaling = !enableScaling;
-            toggleScalingButton.classList.toggle('active');
-            scalingStatus.textContent = enableScaling ? 'Scaling: Enabled' : 'Scaling: Disabled';
-            scalingStatus.style.color = enableScaling ? '#4CAF50' : '#FF5252';
-            
-            if (!enableScaling && model3D) {
-                model3D.scale.set(1, 1, 1);
-                bodyScaleCalculated = false;
-                boneScalesCalculated = false;
-                framesSinceScaling = 0;
-            }
-        }
-
         // ==================== EVENT LISTENERS ====================
         startButton.addEventListener('click', startTracking);
         stopButton.addEventListener('click', stopTracking);
         toggleSkeletonButton.addEventListener('click', toggleSkeleton);
-        toggleAnglesButton.addEventListener('click', toggleAngles);
         toggleConnectionsButton.addEventListener('click', toggleConnections);
         toggle3DModelButton.addEventListener('click', toggle3DModel);
-        toggleScalingButton.addEventListener('click', toggleScaling);
+
+        // Keyboard shortcuts to adjust scale
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '+' || e.key === '=') {
+                MODEL_SCALE += 0.1;
+                if (model3D) model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+                console.log('Scale increased:', MODEL_SCALE);
+            } else if (e.key === '-' || e.key === '_') {
+                MODEL_SCALE = Math.max(0.1, MODEL_SCALE - 0.1);
+                if (model3D) model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+                console.log('Scale decreased:', MODEL_SCALE);
+            }
+        });
 
         window.addEventListener('resize', () => {
             if (threeRenderer && threeCamera && threejsCanvas.parentElement) {
@@ -1490,7 +906,7 @@
         });
 
         window.addEventListener('load', () => {
-            statusText.textContent = '✨ Ready - Model will auto-scale to match your body';
+            statusText.textContent = '✨ Ready to wear Bahubali Armour!';
             stopButton.disabled = true;
             initThreeJS();
         });
