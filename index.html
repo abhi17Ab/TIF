@@ -3,1212 +3,688 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bahubali Armour Body Tracking - Custom Rig</title>
+    <title>AR Body Tracker - Bahubali Armour</title>
     <style>
-        /* ==================== RESET & BASE ==================== */
         * {
-            box-sizing: border-box;
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
         }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: white;
-            overflow-x: hidden;
-        }
-
-        /* ==================== LAYOUT ==================== */
-        .app-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            position: relative;
-        }
-
-        h1 {
-            text-align: center;
-            margin-bottom: 25px;
-            font-size: 2.2em;
-            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.3);
-        }
-
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        /* ==================== VIDEO SECTION ==================== */
-        .video-section {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .video-container {
-            position: relative;
-            width: 100%;
-            border-radius: 15px;
             overflow: hidden;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-            background: rgba(0, 0, 0, 0.3);
+            background: #000;
         }
 
-        #webcam {
-            width: 100%;
-            height: auto;
-            display: block;
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
         }
 
-        #output_canvas,
-        #threejs_canvas {
+        #videoElement {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none;
+            object-fit: cover;
+            transform: scaleX(-1);
         }
 
-        #threejs_canvas {
-            opacity: 0.95;
-        }
-
-        .fps-counter {
+        #canvasElement {
             position: absolute;
-            top: 15px;
-            right: 15px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 18px;
-            color: #4CAF50;
-            z-index: 10;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
         }
 
-        /* ==================== CONTROLS ==================== */
-        .controls {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            justify-content: center;
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            max-width: 300px;
+            backdrop-filter: blur(10px);
         }
 
         button {
-            background: rgba(255, 255, 255, 0.2);
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            padding: 12px 24px;
-            border-radius: 25px;
             cursor: pointer;
-            font-size: 15px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
+            font-size: 16px;
+            font-weight: bold;
+            transition: transform 0.2s;
         }
 
-        button:hover:not(:disabled) {
-            background: rgba(255, 255, 255, 0.35);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        button:hover {
+            transform: scale(1.05);
         }
 
         button:disabled {
-            opacity: 0.5;
+            background: #555;
             cursor: not-allowed;
         }
 
-        button.active {
-            background: rgba(76, 175, 80, 0.6);
-            border-color: rgba(76, 175, 80, 0.8);
-        }
-
-        /* ==================== METRICS PANEL ==================== */
-        .metrics-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            max-height: 90vh;
-            overflow-y: auto;
-        }
-
-        .metric-card {
-            background: rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(10px);
-            border-radius: 12px;
-            padding: 15px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .metric-card h3 {
-            font-size: 16px;
-            margin-bottom: 12px;
-            color: #fff;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
-            padding-bottom: 8px;
-        }
-
-        .metric-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        .stats {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
             font-size: 14px;
         }
 
-        .metric-row:last-child {
-            border-bottom: none;
+        .stats-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
         }
 
-        .metric-label {
-            color: rgba(255, 255, 255, 0.8);
+        .stats-label {
+            color: #aaa;
         }
 
-        .metric-value {
+        .stats-value {
+            color: #0f0;
             font-weight: bold;
-            color: #4CAF50;
-            font-size: 15px;
         }
 
-        .status-card {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-            backdrop-filter: blur(10px);
+        h3 {
+            margin: 15px 0 10px 0;
+            font-size: 16px;
+            color: #667eea;
         }
 
-        /* ==================== ADJUSTMENT CONTROLS ==================== */
-        .adjustment-controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin-top: 10px;
-        }
-
-        .adj-btn {
-            padding: 8px 12px;
+        .bone-info {
             font-size: 12px;
-            background: rgba(100, 181, 246, 0.3);
+            padding: 5px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            margin: 3px 0;
         }
 
-        /* ==================== RESPONSIVE ==================== */
-        @media (max-width: 1024px) {
-            .main-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .metrics-panel {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-                max-height: none;
-            }
+        #status {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px;
+            border-radius: 8px;
+            color: #0f0;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <h1>⚔️ Bahubali Armour Body Tracking</h1>
-
-        <div class="main-grid">
-            <!-- Video Section -->
-            <div class="video-section">
-                <div class="video-container">
-                    <video id="webcam" autoplay muted playsinline></video>
-                    <canvas id="output_canvas"></canvas>
-                    <canvas id="threejs_canvas"></canvas>
-                    <div class="fps-counter" id="fpsCounter">FPS: 0</div>
+    <div id="container">
+        <video id="videoElement" autoplay playsinline></video>
+        <canvas id="canvasElement"></canvas>
+        
+        <div id="controls">
+            <h2 style="margin-bottom: 15px;">🛡️ AR Armour</h2>
+            <button id="startBtn">Start Tracking</button>
+            
+            <div class="stats">
+                <div class="stats-item">
+                    <span class="stats-label">FPS:</span>
+                    <span class="stats-value" id="fps">0</span>
                 </div>
-
-                <!-- Control Buttons -->
-                <div class="controls">
-                    <button id="startButton">▶ Start Tracking</button>
-                    <button id="stopButton">⏹ Stop Tracking</button>
-                    <button id="toggleSkeleton" class="active">👤 Skeleton</button>
-                    <button id="toggleConnections" class="active">🔗 Connections</button>
-                    <button id="toggle3DModel" class="active">🎭 Armour</button>
+                <div class="stats-item">
+                    <span class="stats-label">Landmarks:</span>
+                    <span class="stats-value" id="landmarks">0/33</span>
                 </div>
-
-                <!-- Status Card -->
-                <div class="status-card">
-                    <div id="statusText">Click "Start Tracking" to wear the armour</div>
-                    <div style="margin-top: 8px;">
-                        Landmarks: <span id="landmarkCount" style="color: #4CAF50; font-weight: bold;">0</span>/33
-                    </div>
-                    <div style="margin-top: 8px;">
-                        <span id="modelStatus" style="color: #FFA726;">Armour: Not Loaded</span>
-                    </div>
-
-                    <div class="adjustment-controls">
-                        <button class="adj-btn" onclick="armourTracker.adjustScale(0.1)">Scale +</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustScale(-0.1)">Scale -</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustOffsetY(0.1)">Move Up</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustOffsetY(-0.1)">Move Down</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustOffsetX(0.1)">Move Right</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustOffsetX(-0.1)">Move Left</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustDepth(0.5)">Closer</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustDepth(-0.5)">Further</button>
-                    </div>
+                <div class="stats-item">
+                    <span class="stats-label">Armour:</span>
+                    <span class="stats-value" id="modelStatus">Not Loaded</span>
                 </div>
             </div>
 
-            <!-- Metrics Panel -->
-            <div class="metrics-panel">
-                <div class="metric-card">
-                    <h3>🎯 Armour Settings</h3>
-                    <div class="metric-row">
-                        <span class="metric-label">Scale</span>
-                        <span class="metric-value" id="displayScale">1.2x</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Bones Mapped</span>
-                        <span class="metric-value" id="displayBones">0/20</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Rig Type</span>
-                        <span class="metric-value" id="displayRigType">Custom</span>
-                    </div>
+            <h3>🎯 Armour Settings</h3>
+            <div class="stats">
+                <div class="stats-item">
+                    <span class="stats-label">Scale:</span>
+                    <span class="stats-value" id="scaleInfo">Auto</span>
                 </div>
-
-                <div class="metric-card">
-                    <h3>📊 Body Metrics</h3>
-                    <div class="metric-row">
-                        <span class="metric-label">Posture</span>
-                        <span class="metric-value" id="posture">--</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Body Height</span>
-                        <span class="metric-value" id="bodyHeight">--</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Shoulder Width</span>
-                        <span class="metric-value" id="shoulderWidth">--</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Movement Speed</span>
-                        <span class="metric-value" id="movementSpeed">--</span>
-                    </div>
+                <div class="stats-item">
+                    <span class="stats-label">Bones Mapped:</span>
+                    <span class="stats-value" id="bonesMapped">0/20</span>
                 </div>
+                <div class="stats-item">
+                    <span class="stats-label">Alignment:</span>
+                    <span class="stats-value" id="alignment">Centered</span>
+                </div>
+            </div>
 
-                <div class="metric-card">
-                    <h3>📍 Bone Mapping</h3>
-                    <div class="metric-row">
-                        <span class="metric-label">Spine</span>
-                        <span class="metric-value" id="boneSpine">--</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Chest</span>
-                        <span class="metric-value" id="boneChest">--</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Left Arm</span>
-                        <span class="metric-value" id="boneLeftArm">--</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Right Arm</span>
-                        <span class="metric-value" id="boneRightArm">--</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Left Leg</span>
-                        <span class="metric-value" id="boneLeftLeg">--</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Right Leg</span>
-                        <span class="metric-value" id="boneRightLeg">--</span>
-                    </div>
+            <h3>📊 Body Metrics</h3>
+            <div class="stats">
+                <div class="stats-item">
+                    <span class="stats-label">Body Height:</span>
+                    <span class="stats-value" id="bodyHeight">--</span>
+                </div>
+                <div class="stats-item">
+                    <span class="stats-label">Shoulder Width:</span>
+                    <span class="stats-value" id="shoulderWidth">--</span>
+                </div>
+                <div class="stats-item">
+                    <span class="stats-label">Torso Length:</span>
+                    <span class="stats-value" id="torsoLength">--</span>
                 </div>
             </div>
         </div>
+
+        <div id="status">Click "Start Tracking" to wear the armour</div>
     </div>
 
-    <!-- External Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-
-    <script>
-        'use strict';
-
-        // ==================== APPLICATION STATE ====================
-        class AppState {
-            constructor() {
-                this.isTracking = false;
-                this.showSkeleton = true;
-                this.showConnections = true;
-                this.show3DModel = true;
-                this.frameCount = 0;
-                this.lastTime = performance.now();
-                this.fps = 0;
-                this.previousLandmarks = null;
-                this.previousTimestamp = 0;
-                this.smoothedLandmarks = null;
-            }
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
         }
+    }
+    </script>
 
-        // ==================== CONSTANTS ====================
-        const CONFIG = {
-            SMOOTHING_FACTOR: 0.7,
-            VIDEO_WIDTH: 1280,
-            VIDEO_HEIGHT: 720,
-            MODEL_PATH: './armour_bahubali.glb',
-            VISIBILITY_THRESHOLD: 0.5,
-            MEDIAPIPE_OPTIONS: {
-                modelComplexity: 1,
-                smoothLandmarks: true,
-                enableSegmentation: false,
-                minDetectionConfidence: 0.7,
-                minTrackingConfidence: 0.7
-            }
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // MediaPipe Pose Detection
+        const videoElement = document.getElementById('videoElement');
+        const canvasElement = document.getElementById('canvasElement');
+        const canvasCtx = canvasElement.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const statusDiv = document.getElementById('status');
+
+        let pose, camera, armourModel, skeleton, bones = {};
+        let tracking = false;
+        let lastFrameTime = Date.now();
+        let frameCount = 0;
+        let bodyMetrics = {
+            height: 0,
+            shoulderWidth: 0,
+            torsoLength: 0,
+            hipWidth: 0
         };
-
-        // ==================== BONE MAPPING - UPDATED FOR YOUR MODEL ====================
-        const RIGIFY_BONE_MAP = {
-            // Spine and torso
-            hips: ['spine'],
-            spine: ['spine001'],
-            chest: ['spine002', 'spine003'],
-            neck: ['spine004', 'spine005'],
-            head: ['spine006'],
-            
-            // Left arm
-            leftShoulder: ['shoulderL'],
-            leftUpperArm: ['upper_armL'],
-            leftForearm: ['forearmL'],
-            leftHand: ['handL'],
-            
-            // Right arm
-            rightShoulder: ['shoulderR'],
-            rightUpperArm: ['upper_armR'],
-            rightForearm: ['forearmR'],
-            rightHand: ['handR'],
-            
-            // Left leg
-            leftUpLeg: ['thighL'],
-            leftLeg: ['shinL'],
-            leftFoot: ['footL'],
-            leftToe: ['toeL'],
-            
-            // Right leg
-            rightUpLeg: ['thighR'],
-            rightLeg: ['shinR'],
-            rightFoot: ['footR'],
-            rightToe: ['toeR']
-        };
-
-        // ==================== MODEL SETTINGS ====================
-        class ModelSettings {
-            constructor() {
-                this.scale = 1.2;
-                this.offsetX = 0.0;
-                this.offsetY = -0.3;
-                this.depthMultiplier = 3.0;
-                this.coordinateScaleX = 2.0;
-                this.coordinateScaleY = 2.0;
-                this.bodyScale = 1.0;
-                this.torsoLength = 1.0;
-            }
-
-            updateDisplay() {
-                document.getElementById('displayScale').textContent = `${this.scale.toFixed(1)}x`;
-            }
-        }
-
-        // ==================== DOM MANAGER ====================
-        class DOMManager {
-            constructor() {
-                this.videoElement = document.getElementById('webcam');
-                this.canvasElement = document.getElementById('output_canvas');
-                this.canvasCtx = this.canvasElement.getContext('2d');
-                this.threejsCanvas = document.getElementById('threejs_canvas');
-                
-                this.buttons = {
-                    start: document.getElementById('startButton'),
-                    stop: document.getElementById('stopButton'),
-                    toggleSkeleton: document.getElementById('toggleSkeleton'),
-                    toggleConnections: document.getElementById('toggleConnections'),
-                    toggle3DModel: document.getElementById('toggle3DModel')
-                };
-
-                this.displays = {
-                    status: document.getElementById('statusText'),
-                    landmarkCount: document.getElementById('landmarkCount'),
-                    fps: document.getElementById('fpsCounter'),
-                    modelStatus: document.getElementById('modelStatus'),
-                    posture: document.getElementById('posture'),
-                    bodyHeight: document.getElementById('bodyHeight'),
-                    shoulderWidth: document.getElementById('shoulderWidth'),
-                    movementSpeed: document.getElementById('movementSpeed'),
-                    bones: document.getElementById('displayBones'),
-                    rigType: document.getElementById('displayRigType'),
-                    boneSpine: document.getElementById('boneSpine'),
-                    boneChest: document.getElementById('boneChest'),
-                    boneLeftArm: document.getElementById('boneLeftArm'),
-                    boneRightArm: document.getElementById('boneRightArm'),
-                    boneLeftLeg: document.getElementById('boneLeftLeg'),
-                    boneRightLeg: document.getElementById('boneRightLeg')
-                };
-            }
-
-            updateStatus(message, color = '#FFA726') {
-                this.displays.status.textContent = message;
-                this.displays.status.style.color = color;
-            }
-
-            updateModelStatus(message, color = '#FFA726') {
-                this.displays.modelStatus.textContent = message;
-                this.displays.modelStatus.style.color = color;
-            }
-
-            setButtonStates(tracking) {
-                this.buttons.start.disabled = tracking;
-                this.buttons.stop.disabled = !tracking;
-            }
-        }
-
-        // ==================== BONE MAPPER ====================
-        class BoneMapper {
-            constructor() {
-                this.boneMap = {};
-                this.skeleton = null;
-            }
-
-            findBoneByNames(skeleton, possibleNames) {
-                for (const name of possibleNames) {
-                    const bone = skeleton.getBoneByName(name);
-                    if (bone) return bone;
-                }
-                return null;
-            }
-
-            mapBones(skeleton) {
-                this.skeleton = skeleton;
-                this.boneMap = {};
-
-                console.log('🔍 Mapping bones to your custom rig...');
-                console.log('Available bones:', skeleton.bones.map(b => b.name));
-
-                for (const [key, possibleNames] of Object.entries(RIGIFY_BONE_MAP)) {
-                    const bone = this.findBoneByNames(skeleton, possibleNames);
-                    if (bone) {
-                        this.boneMap[key] = bone;
-                        console.log(`✅ Mapped ${key} to ${bone.name}`);
-                    } else {
-                        console.warn(`⚠️ Could not find bone for ${key}, tried: ${possibleNames.join(', ')}`);
-                    }
-                }
-
-                return Object.keys(this.boneMap).length;
-            }
-
-            getBone(name) {
-                return this.boneMap[name] || null;
-            }
-
-            hasBone(name) {
-                return !!this.boneMap[name];
-            }
-
-            getBoneNames() {
-                return Object.keys(this.boneMap);
-            }
-        }
-
-        // ==================== THREE.JS RENDERER ====================
-        class ThreeJSRenderer {
-            constructor(canvas, settings) {
-                this.canvas = canvas;
-                this.settings = settings;
-                this.scene = null;
-                this.camera = null;
-                this.renderer = null;
-                this.model = null;
-                this.skeleton = null;
-                this.boneMapper = new BoneMapper();
-                this.modelLoaded = false;
-                
-                this.initialize();
-            }
-
-            initialize() {
-                this.scene = new THREE.Scene();
-                
-                const container = this.canvas.parentElement;
-                const aspect = container.offsetWidth / container.offsetHeight;
-                this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
-                this.camera.position.set(0, 0, 5);
-                this.camera.lookAt(0, 0, 0);
-                
-                this.renderer = new THREE.WebGLRenderer({
-                    canvas: this.canvas,
-                    alpha: true,
-                    antialias: true
-                });
-                this.renderer.setSize(container.offsetWidth, container.offsetHeight);
-                this.renderer.setClearColor(0x000000, 0);
-                
-                this.setupLighting();
-            }
-
-            setupLighting() {
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
-                this.scene.add(ambientLight);
-                
-                const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1.2);
-                directionalLight1.position.set(1, 2, 1);
-                this.scene.add(directionalLight1);
-                
-                const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight2.position.set(-1, 1, -1);
-                this.scene.add(directionalLight2);
-            }
-
-            loadModel(path, onProgress, onError) {
-                const loader = new THREE.GLTFLoader();
-                
-                loader.load(
-                    path,
-                    (gltf) => {
-                        this.model = gltf.scene;
-                        this.scene.add(this.model);
-                        this.model.scale.set(this.settings.scale, this.settings.scale, this.settings.scale);
-                        this.model.position.set(0, 0, 0);
-                        this.model.visible = false;
-                        
-                        // Find skeleton
-                        this.model.traverse((child) => {
-                            if (child.isSkinnedMesh && child.skeleton) {
-                                this.skeleton = child.skeleton;
-                                console.log('✅ Found skeleton with', this.skeleton.bones.length, 'bones');
-                                
-                                // Map bones
-                                const mappedCount = this.boneMapper.mapBones(this.skeleton);
-                                document.getElementById('displayBones').textContent = `${mappedCount}/${Object.keys(RIGIFY_BONE_MAP).length}`;
-                                
-                                this.updateBoneDisplay();
-                            }
-                        });
-                        
-                        this.modelLoaded = true;
-                        console.log('✅ Custom rigged armour loaded successfully');
-                    },
-                    onProgress,
-                    (error) => {
-                        console.error('❌ Error loading model:', error);
-                        onError(error);
-                        this.createPlaceholder();
-                    }
-                );
-            }
-
-            updateBoneDisplay() {
-                const checkBone = (name) => this.boneMapper.hasBone(name) ? '✅' : '❌';
-                
-                document.getElementById('boneSpine').textContent = checkBone('spine');
-                document.getElementById('boneChest').textContent = checkBone('chest');
-                document.getElementById('boneLeftArm').textContent = checkBone('leftUpperArm');
-                document.getElementById('boneRightArm').textContent = checkBone('rightUpperArm');
-                document.getElementById('boneLeftLeg').textContent = checkBone('leftUpLeg');
-                document.getElementById('boneRightLeg').textContent = checkBone('rightUpLeg');
-            }
-
-            createPlaceholder() {
-                const geometry = new THREE.BoxGeometry(1, 2, 0.5);
-                const material = new THREE.MeshPhongMaterial({
-                    color: 0x8B4513,
-                    transparent: true,
-                    opacity: 0.8
-                });
-                this.model = new THREE.Mesh(geometry, material);
-                this.scene.add(this.model);
-                this.model.visible = false;
-                this.modelLoaded = true;
-                document.getElementById('displayRigType').textContent = 'Placeholder';
-            }
-
-            isTorsoVisible(landmarks) {
-                const torsoIndices = [11, 12, 23, 24];
-                const VISIBILITY_THRESHOLD = CONFIG.VISIBILITY_THRESHOLD;
-                
-                let visibleCount = 0;
-                for (const idx of torsoIndices) {
-                    if (landmarks[idx] && landmarks[idx].visibility > VISIBILITY_THRESHOLD) {
-                        visibleCount++;
-                    }
-                }
-                
-                return visibleCount >= 3;
-            }
-
-            calculateBoneRotation(fromLandmark, toLandmark) {
-                const from = new THREE.Vector3(fromLandmark.x, -fromLandmark.y, fromLandmark.z);
-                const to = new THREE.Vector3(toLandmark.x, -toLandmark.y, toLandmark.z);
-                
-                const direction = new THREE.Vector3().subVectors(to, from).normalize();
-                const quaternion = new THREE.Quaternion();
-                
-                // Create rotation from default bone direction (0, 1, 0) to target direction
-                const defaultDir = new THREE.Vector3(0, 1, 0);
-                quaternion.setFromUnitVectors(defaultDir, direction);
-                
-                return quaternion;
-            }
-
-            animateBones(landmarks) {
-                if (!this.skeleton || !landmarks) return;
-
-                try {
-                    // Animate spine
-                    if (this.boneMapper.hasBone('hips') && landmarks[23] && landmarks[24]) {
-                        const hipBone = this.boneMapper.getBone('hips');
-                        const hipCenter = {
-                            x: (landmarks[23].x + landmarks[24].x) / 2,
-                            y: (landmarks[23].y + landmarks[24].y) / 2,
-                            z: (landmarks[23].z + landmarks[24].z) / 2
-                        };
-                        const shoulderCenter = {
-                            x: (landmarks[11].x + landmarks[12].x) / 2,
-                            y: (landmarks[11].y + landmarks[12].y) / 2,
-                            z: (landmarks[11].z + landmarks[12].z) / 2
-                        };
-                        
-                        const rotation = this.calculateBoneRotation(hipCenter, shoulderCenter);
-                        hipBone.quaternion.copy(rotation);
-                    }
-
-                    // Animate left upper arm
-                    if (this.boneMapper.hasBone('leftUpperArm') && landmarks[11] && landmarks[13]) {
-                        const bone = this.boneMapper.getBone('leftUpperArm');
-                        const rotation = this.calculateBoneRotation(landmarks[11], landmarks[13]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                    // Animate left forearm
-                    if (this.boneMapper.hasBone('leftForearm') && landmarks[13] && landmarks[15]) {
-                        const bone = this.boneMapper.getBone('leftForearm');
-                        const rotation = this.calculateBoneRotation(landmarks[13], landmarks[15]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                    // Animate right upper arm
-                    if (this.boneMapper.hasBone('rightUpperArm') && landmarks[12] && landmarks[14]) {
-                        const bone = this.boneMapper.getBone('rightUpperArm');
-                        const rotation = this.calculateBoneRotation(landmarks[12], landmarks[14]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                    // Animate right forearm
-                    if (this.boneMapper.hasBone('rightForearm') && landmarks[14] && landmarks[16]) {
-                        const bone = this.boneMapper.getBone('rightForearm');
-                        const rotation = this.calculateBoneRotation(landmarks[14], landmarks[16]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                    // Animate left thigh
-                    if (this.boneMapper.hasBone('leftUpLeg') && landmarks[23] && landmarks[25]) {
-                        const bone = this.boneMapper.getBone('leftUpLeg');
-                        const rotation = this.calculateBoneRotation(landmarks[23], landmarks[25]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                    // Animate left shin
-                    if (this.boneMapper.hasBone('leftLeg') && landmarks[25] && landmarks[27]) {
-                        const bone = this.boneMapper.getBone('leftLeg');
-                        const rotation = this.calculateBoneRotation(landmarks[25], landmarks[27]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                    // Animate right thigh
-                    if (this.boneMapper.hasBone('rightUpLeg') && landmarks[24] && landmarks[26]) {
-                        const bone = this.boneMapper.getBone('rightUpLeg');
-                        const rotation = this.calculateBoneRotation(landmarks[24], landmarks[26]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                    // Animate right shin
-                    if (this.boneMapper.hasBone('rightLeg') && landmarks[26] && landmarks[28]) {
-                        const bone = this.boneMapper.getBone('rightLeg');
-                        const rotation = this.calculateBoneRotation(landmarks[26], landmarks[28]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                } catch (error) {
-                    console.error('Error animating bones:', error);
-                }
-            }
-
-            updateModelPose(landmarks) {
-                if (!this.modelLoaded || !this.model || !landmarks) return null;
-
-                try {
-                    const torsoVisible = this.isTorsoVisible(landmarks);
-                    
-                    if (!torsoVisible) {
-                        this.model.visible = false;
-                        return { visible: false };
-                    }
-                    
-                    this.model.visible = true;
-
-                    // Calculate torso center for positioning
-                    const shoulders = [11, 12];
-                    const hips = [23, 24];
-                    
-                    let shoulderX = 0, shoulderY = 0, shoulderZ = 0, shoulderCount = 0;
-                    shoulders.forEach(idx => {
-                        if (landmarks[idx]) {
-                            shoulderX += landmarks[idx].x;
-                            shoulderY += landmarks[idx].y;
-                            shoulderZ += landmarks[idx].z;
-                            shoulderCount++;
-                        }
-                    });
-                    
-                    if (shoulderCount > 0) {
-                        shoulderX /= shoulderCount;
-                        shoulderY /= shoulderCount;
-                        shoulderZ /= shoulderCount;
-                    }
-                    
-                    let hipX = 0, hipY = 0, hipZ = 0, hipCount = 0;
-                    hips.forEach(idx => {
-                        if (landmarks[idx]) {
-                            hipX += landmarks[idx].x;
-                            hipY += landmarks[idx].y;
-                            hipZ += landmarks[idx].z;
-                            hipCount++;
-                        }
-                    });
-                    
-                    if (hipCount > 0) {
-                        hipX /= hipCount;
-                        hipY /= hipCount;
-                        hipZ /= hipCount;
-                    }
-                    
-                    const centerX = (shoulderX + hipX) / 2;
-                    const centerY = (shoulderY + hipY) / 2;
-                    const centerZ = (shoulderZ + hipZ) / 2;
-                    
-                    // Position the model
-                    const posX = (centerX - 0.5) * this.settings.coordinateScaleX + this.settings.offsetX;
-                    const posY = -(centerY - 0.5) * this.settings.coordinateScaleY + this.settings.offsetY;
-                    const posZ = -centerZ * this.settings.depthMultiplier;
-                    
-                    this.model.position.set(posX, posY, posZ);
-                    
-                    // Animate bones with pose data
-                    this.animateBones(landmarks);
-
-                    this.renderer.render(this.scene, this.camera);
-
-                    return { 
-                        visible: true,
-                        centerX, 
-                        centerY, 
-                        centerZ, 
-                        posX, 
-                        posY, 
-                        posZ
-                    };
-                } catch (error) {
-                    console.error('Error updating model pose:', error);
-                    this.model.visible = false;
-                    return { visible: false };
-                }
-            }
-
-            handleResize() {
-                if (!this.renderer || !this.camera) return;
-
-                const container = this.canvas.parentElement;
-                const width = container.offsetWidth;
-                const height = container.offsetHeight;
-                
-                this.renderer.setSize(width, height);
-                this.camera.aspect = width / height;
-                this.camera.updateProjectionMatrix();
-            }
-        }
-
-        // ==================== MEDIAPIPE PROCESSOR ====================
-        class MediaPipeProcessor {
-            constructor(domManager, appState, threeJSRenderer) {
-                this.domManager = domManager;
-                this.appState = appState;
-                this.threeJSRenderer = threeJSRenderer;
-                this.pose = null;
-                this.camera = null;
-                
-                this.initializePose();
-            }
-
-            initializePose() {
-                this.pose = new Pose({
-                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-                });
-
-                this.pose.setOptions(CONFIG.MEDIAPIPE_OPTIONS);
-                this.pose.onResults(this.onResults.bind(this));
-            }
-
-            onResults(results) {
-                if (!this.appState.isTracking) return;
-
-                this.updateFPS();
-                this.renderVideoCanvas(results);
-
-                if (results.poseLandmarks) {
-                    const landmarks = this.smoothLandmarks(results.poseLandmarks);
-                    this.appState.smoothedLandmarks = landmarks;
-
-                    this.drawLandmarks(landmarks);
-                    this.calculateMetrics(landmarks);
-                    this.updateModelPosition(landmarks);
-                }
-            }
-
-            updateFPS() {
-                this.appState.frameCount++;
-                const currentTime = performance.now();
-                const delta = currentTime - this.appState.lastTime;
-
-                if (delta >= 1000) {
-                    this.appState.fps = Math.round(this.appState.frameCount * 1000 / delta);
-                    this.domManager.displays.fps.textContent = `FPS: ${this.appState.fps}`;
-                    this.appState.frameCount = 0;
-                    this.appState.lastTime = currentTime;
-                }
-            }
-
-            renderVideoCanvas(results) {
-                const { canvasElement, canvasCtx, videoElement } = this.domManager;
-                
-                canvasElement.width = videoElement.videoWidth;
-                canvasElement.height = videoElement.videoHeight;
-                
-                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-                canvasCtx.save();
-                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-                canvasCtx.restore();
-            }
-
-            drawLandmarks(landmarks) {
-                const { canvasCtx } = this.domManager;
-
-                if (this.appState.showConnections) {
-                    drawConnectors(canvasCtx, landmarks, POSE_CONNECTIONS, {
-                        color: '#00FF88',
-                        lineWidth: 3
-                    });
-                }
-
-                if (this.appState.showSkeleton) {
-                    drawLandmarks(canvasCtx, [
-                        landmarks[11], landmarks[13], landmarks[15],
-                        landmarks[23], landmarks[25], landmarks[27]
-                    ], { color: '#2196F3', fillColor: '#2196F3', lineWidth: 2, radius: 5 });
-
-                    drawLandmarks(canvasCtx, [
-                        landmarks[12], landmarks[14], landmarks[16],
-                        landmarks[24], landmarks[26], landmarks[28]
-                    ], { color: '#FF5722', fillColor: '#FF5722', lineWidth: 2, radius: 5 });
-
-                    drawLandmarks(canvasCtx, [
-                        landmarks[0], landmarks[9], landmarks[10]
-                    ], { color: '#4CAF50', fillColor: '#4CAF50', lineWidth: 2, radius: 5 });
-                }
-            }
-
-            smoothLandmarks(currentLandmarks) {
-                if (!this.appState.smoothedLandmarks) return currentLandmarks;
-
-                return currentLandmarks.map((landmark, index) => {
-                    const prev = this.appState.smoothedLandmarks[index];
-                    if (!prev) return landmark;
-
-                    return {
-                        x: prev.x + (landmark.x - prev.x) * (1 - CONFIG.SMOOTHING_FACTOR),
-                        y: prev.y + (landmark.y - prev.y) * (1 - CONFIG.SMOOTHING_FACTOR),
-                        z: prev.z + (landmark.z - prev.z) * (1 - CONFIG.SMOOTHING_FACTOR),
-                        visibility: landmark.visibility
-                    };
-                });
-            }
-
-            calculateMetrics(landmarks) {
-                if (landmarks[0] && landmarks[27] && landmarks[28]) {
-                    const leftHeight = this.calculateDistance(landmarks[0], landmarks[27]);
-                    const rightHeight = this.calculateDistance(landmarks[0], landmarks[28]);
-                    const avgHeight = ((leftHeight + rightHeight) / 2).toFixed(3);
-                    this.domManager.displays.bodyHeight.textContent = `${avgHeight} u`;
-                }
-
-                if (landmarks[11] && landmarks[12]) {
-                    const shoulderWidth = this.calculateDistance(landmarks[11], landmarks[12]);
-                    this.domManager.displays.shoulderWidth.textContent = `${shoulderWidth.toFixed(3)} u`;
-                }
-
-                const currentTimestamp = Date.now();
-                const timeDelta = currentTimestamp - this.appState.previousTimestamp;
-
-                if (this.appState.previousLandmarks && timeDelta > 0) {
-                    const velocity = this.calculateVelocity(landmarks, this.appState.previousLandmarks, timeDelta);
-                    this.domManager.displays.movementSpeed.textContent = `${velocity.toFixed(3)} u/s`;
-                }
-
-                this.appState.previousLandmarks = JSON.parse(JSON.stringify(landmarks));
-                this.appState.previousTimestamp = currentTimestamp;
-
-                const posture = this.determinePosture(landmarks);
-                this.domManager.displays.posture.textContent = posture;
-                this.domManager.displays.landmarkCount.textContent = landmarks.length;
-            }
-
-            updateModelPosition(landmarks) {
-                if (!this.appState.show3DModel) return;
-
-                const result = this.threeJSRenderer.updateModelPose(landmarks);
-            }
-
-            calculateDistance(point1, point2) {
-                const dx = point2.x - point1.x;
-                const dy = point2.y - point1.y;
-                const dz = (point2.z || 0) - (point1.z || 0);
-                return Math.sqrt(dx * dx + dy * dy + dz * dz);
-            }
-
-            calculateVelocity(currentLandmarks, previousLandmarks, timeDelta) {
-                let totalMovement = 0;
-                const keyPoints = [11, 12, 23, 24];
-
-                keyPoints.forEach(idx => {
-                    if (currentLandmarks[idx] && previousLandmarks[idx]) {
-                        totalMovement += this.calculateDistance(
-                            currentLandmarks[idx],
-                            previousLandmarks[idx]
-                        );
-                    }
-                });
-
-                return (totalMovement / keyPoints.length) / timeDelta * 1000;
-            }
-
-            determinePosture(landmarks) {
-                const nose = landmarks[0];
-                const leftHip = landmarks[23];
-                const rightHip = landmarks[24];
-                const leftKnee = landmarks[25];
-                const rightKnee = landmarks[26];
-
-                if (!nose || !leftHip || !rightHip || !leftKnee || !rightKnee) {
-                    return "Unknown";
-                }
-
-                const hipMidY = (leftHip.y + rightHip.y) / 2;
-                const kneeMidY = (leftKnee.y + rightKnee.y) / 2;
-                const noseToHipDist = Math.abs(nose.y - hipMidY);
-                const hipToKneeDist = Math.abs(hipMidY - kneeMidY);
-
-                if (noseToHipDist < 0.2) return "Lying Down";
-                if (hipToKneeDist < 0.15) return "Sitting";
-                if (nose.y < hipMidY && hipToKneeDist > 0.15) return "Standing";
-                return "Transitioning";
-            }
-
-            async startCamera() {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        video: {
-                            width: { ideal: CONFIG.VIDEO_WIDTH },
-                            height: { ideal: CONFIG.VIDEO_HEIGHT },
-                            facingMode: 'user'
-                        }
-                    });
-
-                    this.domManager.videoElement.srcObject = stream;
-                    await new Promise(resolve => {
-                        this.domManager.videoElement.onloadedmetadata = () => resolve();
-                    });
-
-                    this.camera = new Camera(this.domManager.videoElement, {
-                        onFrame: async () => {
-                            if (this.appState.isTracking) {
-                                await this.pose.send({ image: this.domManager.videoElement });
-                            }
-                        },
-                        width: CONFIG.VIDEO_WIDTH,
-                        height: CONFIG.VIDEO_HEIGHT
-                    });
-
-                    await this.camera.start();
-                    return true;
-                } catch (error) {
-                    console.error('Camera error:', error);
-                    throw error;
-                }
-            }
-
-            stopCamera() {
-                if (this.camera) {
-                    this.camera.stop();
-                    this.camera = null;
-                }
-
-                if (this.domManager.videoElement.srcObject) {
-                    this.domManager.videoElement.srcObject.getTracks().forEach(track => track.stop());
-                    this.domManager.videoElement.srcObject = null;
-                }
-            }
-        }
-
-        // ==================== MAIN APPLICATION CONTROLLER ====================
-        class ArmourTracker {
-            constructor() {
-                this.appState = new AppState();
-                this.modelSettings = new ModelSettings();
-                this.domManager = new DOMManager();
-                this.threeJSRenderer = new ThreeJSRenderer(
-                    this.domManager.threejsCanvas,
-                    this.modelSettings
-                );
-                this.mediaPipeProcessor = new MediaPipeProcessor(
-                    this.domManager,
-                    this.appState,
-                    this.threeJSRenderer
-                );
-
-                this.initialize();
-            }
-
-            initialize() {
-                this.setupEventListeners();
-                this.loadModel();
-                this.modelSettings.updateDisplay();
-                this.domManager.updateStatus('✨ Ready! Start tracking to animate your armour');
-                this.domManager.setButtonStates(false);
-            }
-
-            setupEventListeners() {
-                this.domManager.buttons.start.addEventListener('click', () => this.start());
-                this.domManager.buttons.stop.addEventListener('click', () => this.stop());
-                this.domManager.buttons.toggleSkeleton.addEventListener('click', () => this.toggleSkeleton());
-                this.domManager.buttons.toggleConnections.addEventListener('click', () => this.toggleConnections());
-                this.domManager.buttons.toggle3DModel.addEventListener('click', () => this.toggle3DModel());
-
-                window.addEventListener('resize', () => this.threeJSRenderer.handleResize());
-                window.addEventListener('beforeunload', () => this.cleanup());
-            }
-
-            loadModel() {
-                this.threeJSRenderer.loadModel(
-                    CONFIG.MODEL_PATH,
-                    (xhr) => {
-                        const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
-                        this.domManager.updateModelStatus(`Armour: Loading ${percent}%`);
-                    },
-                    (error) => {
-                        this.domManager.updateModelStatus('Armour: Using Placeholder', '#FFA726');
-                    }
-                );
-
-                const checkModel = setInterval(() => {
-                    if (this.threeJSRenderer.modelLoaded) {
-                        this.domManager.updateModelStatus('Armour: ✅ Loaded', '#4CAF50');
-                        clearInterval(checkModel);
-                    }
-                }, 100);
-            }
-
-            async start() {
-                if (this.appState.isTracking) return;
-
-                try {
-                    await this.mediaPipeProcessor.startCamera();
-                    this.appState.isTracking = true;
-                    this.domManager.updateStatus('✅ Tracking! Bones animating with your body', '#4CAF50');
-                    this.domManager.setButtonStates(true);
-                } catch (error) {
-                    this.domManager.updateStatus(`❌ Camera Error: ${error.message}`, '#FF5252');
-                }
-            }
-
-            stop() {
-                this.appState.isTracking = false;
-                this.mediaPipeProcessor.stopCamera();
-                
-                this.domManager.canvasCtx.clearRect(
-                    0, 0,
-                    this.domManager.canvasElement.width,
-                    this.domManager.canvasElement.height
-                );
-                
-                this.domManager.updateStatus('⏸ Tracking Stopped', '#FFA726');
-                this.domManager.displays.landmarkCount.textContent = '0';
-                this.domManager.displays.fps.textContent = 'FPS: 0';
-                this.domManager.setButtonStates(false);
-            }
-
-            toggleSkeleton() {
-                this.appState.showSkeleton = !this.appState.showSkeleton;
-                this.domManager.buttons.toggleSkeleton.classList.toggle('active');
-            }
-
-            toggleConnections() {
-                this.appState.showConnections = !this.appState.showConnections;
-                this.domManager.buttons.toggleConnections.classList.toggle('active');
-            }
-
-            toggle3DModel() {
-                this.appState.show3DModel = !this.appState.show3DModel;
-                this.domManager.buttons.toggle3DModel.classList.toggle('active');
-                this.domManager.threejsCanvas.style.display = this.appState.show3DModel ? 'block' : 'none';
-            }
-
-            adjustScale(delta) {
-                this.modelSettings.scale = Math.max(0.1, this.modelSettings.scale + delta);
-                if (this.threeJSRenderer.model) {
-                    this.threeJSRenderer.model.scale.set(
-                        this.modelSettings.scale,
-                        this.modelSettings.scale,
-                        this.modelSettings.scale
-                    );
-                }
-                this.modelSettings.updateDisplay();
-            }
-
-            adjustOffsetX(delta) {
-                this.modelSettings.offsetX += delta;
-            }
-
-            adjustOffsetY(delta) {
-                this.modelSettings.offsetY += delta;
-            }
-
-            adjustDepth(delta) {
-                this.modelSettings.depthMultiplier = Math.max(0.1, this.modelSettings.depthMultiplier + delta);
-            }
-
-            cleanup() {
-                if (this.appState.isTracking) {
-                    this.stop();
-                }
-            }
-        }
-
-        // ==================== INITIALIZE APPLICATION ====================
-        let armourTracker;
-
-        window.addEventListener('load', () => {
-            armourTracker = new ArmourTracker();
+        let autoScale = 1.0;
+
+        // Three.js Scene Setup
+        const scene = new THREE.Scene();
+        const threeCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        threeCamera.position.z = 5;
+
+        const renderer = new THREE.WebGLRenderer({ 
+            canvas: canvasElement, 
+            alpha: true,
+            antialias: true 
         });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 0);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 0.4);
+        pointLight.position.set(-5, 5, 5);
+        scene.add(pointLight);
+
+        // Load 3D Armour Model
+        const loader = new GLTFLoader();
+        loader.load(
+            'armour_bahubali.glb',
+            (gltf) => {
+                armourModel = gltf.scene;
+                
+                // Find skeleton in the loaded model
+                armourModel.traverse((child) => {
+                    if (child.isSkinnedMesh) {
+                        skeleton = child.skeleton;
+                        console.log('Skeleton found:', skeleton);
+                        
+                        // Map bones by name
+                        skeleton.bones.forEach((bone) => {
+                            bones[bone.name.toLowerCase()] = bone;
+                            console.log('Bone found:', bone.name);
+                        });
+                    }
+                });
+
+                // Set initial position and scale
+                armourModel.position.set(0, 0, 0);
+                armourModel.scale.set(1, 1, 1);
+                
+                scene.add(armourModel);
+                document.getElementById('modelStatus').textContent = 'Loaded';
+                document.getElementById('bonesMapped').textContent = `${Object.keys(bones).length}/20`;
+                updateStatus('Armour loaded! Start tracking to wear it.');
+            },
+            (progress) => {
+                const percent = (progress.loaded / progress.total * 100).toFixed(0);
+                updateStatus(`Loading armour... ${percent}%`);
+            },
+            (error) => {
+                console.error('Error loading model:', error);
+                updateStatus('Error loading armour model');
+            }
+        );
+
+        // MediaPipe Pose Landmarker indices
+        const POSE_LANDMARKS = {
+            NOSE: 0,
+            LEFT_EYE_INNER: 1,
+            LEFT_EYE: 2,
+            LEFT_EYE_OUTER: 3,
+            RIGHT_EYE_INNER: 4,
+            RIGHT_EYE: 5,
+            RIGHT_EYE_OUTER: 6,
+            LEFT_EAR: 7,
+            RIGHT_EAR: 8,
+            MOUTH_LEFT: 9,
+            MOUTH_RIGHT: 10,
+            LEFT_SHOULDER: 11,
+            RIGHT_SHOULDER: 12,
+            LEFT_ELBOW: 13,
+            RIGHT_ELBOW: 14,
+            LEFT_WRIST: 15,
+            RIGHT_WRIST: 16,
+            LEFT_PINKY: 17,
+            RIGHT_PINKY: 18,
+            LEFT_INDEX: 19,
+            RIGHT_INDEX: 20,
+            LEFT_THUMB: 21,
+            RIGHT_THUMB: 22,
+            LEFT_HIP: 23,
+            RIGHT_HIP: 24,
+            LEFT_KNEE: 25,
+            RIGHT_KNEE: 26,
+            LEFT_ANKLE: 27,
+            RIGHT_ANKLE: 28,
+            LEFT_HEEL: 29,
+            RIGHT_HEEL: 30,
+            LEFT_FOOT_INDEX: 31,
+            RIGHT_FOOT_INDEX: 32
+        };
+
+        // Calculate body metrics from landmarks
+        function calculateBodyMetrics(landmarks) {
+            if (!landmarks || landmarks.length < 33) return;
+
+            // Calculate distances in 3D space
+            const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+            const rightShoulder = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
+            const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
+            const rightHip = landmarks[POSE_LANDMARKS.RIGHT_HIP];
+            const leftAnkle = landmarks[POSE_LANDMARKS.LEFT_ANKLE];
+            const rightAnkle = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
+            const nose = landmarks[POSE_LANDMARKS.NOSE];
+
+            // Shoulder width
+            bodyMetrics.shoulderWidth = Math.sqrt(
+                Math.pow(rightShoulder.x - leftShoulder.x, 2) +
+                Math.pow(rightShoulder.y - leftShoulder.y, 2) +
+                Math.pow(rightShoulder.z - leftShoulder.z, 2)
+            );
+
+            // Hip width
+            bodyMetrics.hipWidth = Math.sqrt(
+                Math.pow(rightHip.x - leftHip.x, 2) +
+                Math.pow(rightHip.y - leftHip.y, 2) +
+                Math.pow(rightHip.z - leftHip.z, 2)
+            );
+
+            // Torso length (shoulder center to hip center)
+            const shoulderCenter = {
+                x: (leftShoulder.x + rightShoulder.x) / 2,
+                y: (leftShoulder.y + rightShoulder.y) / 2,
+                z: (leftShoulder.z + rightShoulder.z) / 2
+            };
+            const hipCenter = {
+                x: (leftHip.x + rightHip.x) / 2,
+                y: (leftHip.y + rightHip.y) / 2,
+                z: (leftHip.z + rightHip.z) / 2
+            };
+            
+            bodyMetrics.torsoLength = Math.sqrt(
+                Math.pow(hipCenter.x - shoulderCenter.x, 2) +
+                Math.pow(hipCenter.y - shoulderCenter.y, 2) +
+                Math.pow(hipCenter.z - shoulderCenter.z, 2)
+            );
+
+            // Total body height (nose to average ankle)
+            const avgAnkle = {
+                x: (leftAnkle.x + rightAnkle.x) / 2,
+                y: (leftAnkle.y + rightAnkle.y) / 2,
+                z: (leftAnkle.z + rightAnkle.z) / 2
+            };
+            
+            bodyMetrics.height = Math.sqrt(
+                Math.pow(nose.x - avgAnkle.x, 2) +
+                Math.pow(nose.y - avgAnkle.y, 2) +
+                Math.pow(nose.z - avgAnkle.z, 2)
+            );
+
+            // Calculate auto-scale based on torso length and shoulder width
+            // Assuming standard model torso is ~0.5 units and shoulders ~0.4 units
+            const torsoScale = bodyMetrics.torsoLength / 0.3;
+            const shoulderScale = bodyMetrics.shoulderWidth / 0.25;
+            autoScale = (torsoScale + shoulderScale) / 2;
+
+            // Update UI
+            document.getElementById('bodyHeight').textContent = (bodyMetrics.height * 100).toFixed(1) + ' cm';
+            document.getElementById('shoulderWidth').textContent = (bodyMetrics.shoulderWidth * 100).toFixed(1) + ' cm';
+            document.getElementById('torsoLength').textContent = (bodyMetrics.torsoLength * 100).toFixed(1) + ' cm';
+            document.getElementById('scaleInfo').textContent = autoScale.toFixed(2) + 'x';
+        }
+
+        // Convert normalized coordinates to Three.js world space
+        function landmarkToWorld(landmark, videoWidth, videoHeight) {
+            // Normalize coordinates to -1 to 1 range
+            const x = -(landmark.x * 2 - 1) * 3; // Flip X for mirror
+            const y = (1 - landmark.y * 2) * 2.5; // Flip Y for correct orientation
+            const z = -landmark.z * 3; // Z depth
+            
+            return new THREE.Vector3(x, y, z);
+        }
+
+        // Update armour model position and bones
+        function updateArmourModel(landmarks) {
+            if (!armourModel || !landmarks || landmarks.length < 33) return;
+
+            const videoWidth = videoElement.videoWidth;
+            const videoHeight = videoElement.videoHeight;
+
+            // Calculate hip center as the root position
+            const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
+            const rightHip = landmarks[POSE_LANDMARKS.RIGHT_HIP];
+            const hipCenter = {
+                x: (leftHip.x + rightHip.x) / 2,
+                y: (leftHip.y + rightHip.y) / 2,
+                z: (leftHip.z + rightHip.z) / 2
+            };
+
+            // Set model root position to hip center
+            const hipPosition = landmarkToWorld(hipCenter, videoWidth, videoHeight);
+            armourModel.position.copy(hipPosition);
+
+            // Apply auto-calculated scale
+            const scale = autoScale * 2.5; // Adjust multiplier as needed
+            armourModel.scale.set(scale, scale, scale);
+
+            // Map skeleton bones to MediaPipe landmarks
+            if (skeleton && bones) {
+                mapBonesToLandmarks(landmarks, videoWidth, videoHeight, hipPosition);
+            }
+        }
+
+        // Map armour bones to body landmarks
+        function mapBonesToLandmarks(landmarks, videoWidth, videoHeight, rootPosition) {
+            // Define bone mappings (adjust bone names based on your model)
+            const boneMap = {
+                // Spine/Torso
+                'spine': { landmark: POSE_LANDMARKS.LEFT_HIP, type: 'position' },
+                'spine1': { landmark: POSE_LANDMARKS.LEFT_SHOULDER, type: 'look' },
+                'chest': { landmark: POSE_LANDMARKS.LEFT_SHOULDER, type: 'position' },
+                
+                // Left Arm
+                'leftshoulder': { landmark: POSE_LANDMARKS.LEFT_SHOULDER, type: 'position' },
+                'leftarm': { landmark: POSE_LANDMARKS.LEFT_SHOULDER, type: 'position' },
+                'leftforearm': { landmark: POSE_LANDMARKS.LEFT_ELBOW, type: 'look' },
+                'lefthand': { landmark: POSE_LANDMARKS.LEFT_WRIST, type: 'position' },
+                
+                // Right Arm
+                'rightshoulder': { landmark: POSE_LANDMARKS.RIGHT_SHOULDER, type: 'position' },
+                'rightarm': { landmark: POSE_LANDMARKS.RIGHT_SHOULDER, type: 'position' },
+                'rightforearm': { landmark: POSE_LANDMARKS.RIGHT_ELBOW, type: 'look' },
+                'righthand': { landmark: POSE_LANDMARKS.RIGHT_WRIST, type: 'position' },
+                
+                // Left Leg
+                'leftupleg': { landmark: POSE_LANDMARKS.LEFT_HIP, type: 'position' },
+                'leftleg': { landmark: POSE_LANDMARKS.LEFT_KNEE, type: 'look' },
+                'leftfoot': { landmark: POSE_LANDMARKS.LEFT_ANKLE, type: 'position' },
+                
+                // Right Leg
+                'rightupleg': { landmark: POSE_LANDMARKS.RIGHT_HIP, type: 'position' },
+                'rightleg': { landmark: POSE_LANDMARKS.RIGHT_KNEE, type: 'look' },
+                'rightfoot': { landmark: POSE_LANDMARKS.RIGHT_ANKLE, type: 'position' },
+                
+                // Head/Neck
+                'neck': { landmark: POSE_LANDMARKS.NOSE, type: 'look' },
+                'head': { landmark: POSE_LANDMARKS.NOSE, type: 'position' }
+            };
+
+            let mappedCount = 0;
+
+            // Apply bone transformations
+            Object.keys(boneMap).forEach((boneName) => {
+                const bone = bones[boneName.toLowerCase()];
+                if (!bone) return;
+
+                const mapping = boneMap[boneName];
+                const landmark = landmarks[mapping.landmark];
+                if (!landmark) return;
+
+                const worldPos = landmarkToWorld(landmark, videoWidth, videoHeight);
+                
+                // Convert to local space relative to root
+                const localPos = worldPos.sub(rootPosition);
+
+                if (mapping.type === 'position') {
+                    // Direct position mapping
+                    bone.position.copy(localPos.divideScalar(autoScale * 2.5));
+                } else if (mapping.type === 'look') {
+                    // Rotation to look at target
+                    const tempMatrix = new THREE.Matrix4();
+                    tempMatrix.lookAt(bone.position, localPos.divideScalar(autoScale * 2.5), new THREE.Vector3(0, 1, 0));
+                    bone.quaternion.setFromRotationMatrix(tempMatrix);
+                }
+
+                mappedCount++;
+            });
+
+            document.getElementById('bonesMapped').textContent = `${mappedCount}/${Object.keys(boneMap).length}`;
+        }
+
+        // Initialize MediaPipe Pose
+        async function initPose() {
+            const { PoseLandmarker, FilesetResolver } = await window.mediapipe.tasks.vision;
+
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+            );
+
+            pose = await PoseLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numPoses: 1,
+                minPoseDetectionConfidence: 0.5,
+                minPosePresenceConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            console.log('MediaPipe Pose initialized');
+        }
+
+        // Start camera
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    }
+                });
+
+                videoElement.srcObject = stream;
+                
+                videoElement.addEventListener('loadeddata', () => {
+                    canvasElement.width = videoElement.videoWidth;
+                    canvasElement.height = videoElement.videoHeight;
+                    renderer.setSize(videoElement.videoWidth, videoElement.videoHeight);
+                    updateStatus('Camera ready! Tracking started.');
+                });
+
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                updateStatus('Error: Cannot access camera');
+            }
+        }
+
+        // Process video frame
+        async function processFrame() {
+            if (!tracking || !pose) return;
+
+            const currentTime = Date.now();
+            
+            // Detect pose
+            const results = await pose.detectForVideo(videoElement, currentTime);
+
+            // Clear canvas
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.landmarks && results.landmarks.length > 0) {
+                const landmarks = results.landmarks[0];
+                
+                // Calculate body metrics
+                calculateBodyMetrics(landmarks);
+                
+                // Update armour model
+                updateArmourModel(landmarks);
+
+                // Draw landmarks for debugging
+                drawLandmarks(landmarks);
+                
+                // Update stats
+                document.getElementById('landmarks').textContent = `${landmarks.length}/33`;
+            }
+
+            // Calculate FPS
+            frameCount++;
+            if (currentTime - lastFrameTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastFrameTime = currentTime;
+            }
+
+            // Render Three.js scene
+            renderer.render(scene, threeCamera);
+
+            requestAnimationFrame(processFrame);
+        }
+
+        // Draw pose landmarks
+        function drawLandmarks(landmarks) {
+            const videoWidth = canvasElement.width;
+            const videoHeight = canvasElement.height;
+
+            // Draw connections
+            canvasCtx.strokeStyle = '#00FF00';
+            canvasCtx.lineWidth = 2;
+
+            const connections = [
+                [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // Arms
+                [11, 23], [12, 24], [23, 24], // Torso
+                [23, 25], [25, 27], [24, 26], [26, 28], // Legs
+                [0, 1], [1, 2], [2, 3], [3, 7], // Face left
+                [0, 4], [4, 5], [5, 6], [6, 8]  // Face right
+            ];
+
+            connections.forEach(([start, end]) => {
+                const startLandmark = landmarks[start];
+                const endLandmark = landmarks[end];
+                
+                if (startLandmark && endLandmark) {
+                    canvasCtx.beginPath();
+                    canvasCtx.moveTo(startLandmark.x * videoWidth, startLandmark.y * videoHeight);
+                    canvasCtx.lineTo(endLandmark.x * videoWidth, endLandmark.y * videoHeight);
+                    canvasCtx.stroke();
+                }
+            });
+
+            // Draw landmarks
+            canvasCtx.fillStyle = '#FF0000';
+            landmarks.forEach((landmark) => {
+                const x = landmark.x * videoWidth;
+                const y = landmark.y * videoHeight;
+                canvasCtx.beginPath();
+                canvasCtx.arc(x, y, 4, 0, 2 * Math.PI);
+                canvasCtx.fill();
+            });
+        }
+
+        // Update status message
+        function updateStatus(message) {
+            statusDiv.textContent = message;
+        }
+
+        // Start button handler
+        startBtn.addEventListener('click', async () => {
+            if (!tracking) {
+                startBtn.disabled = true;
+                startBtn.textContent = 'Initializing...';
+                
+                await initPose();
+                await startCamera();
+                
+                tracking = true;
+                startBtn.textContent = 'Stop Tracking';
+                startBtn.disabled = false;
+                
+                processFrame();
+            } else {
+                tracking = false;
+                startBtn.textContent = 'Start Tracking';
+                
+                if (videoElement.srcObject) {
+                    videoElement.srcObject.getTracks().forEach(track => track.stop());
+                }
+                
+                updateStatus('Tracking stopped');
+            }
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            
+            threeCamera.aspect = width / height;
+            threeCamera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+
+        // Load MediaPipe library
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js';
+        script.onload = () => {
+            console.log('MediaPipe library loaded');
+            updateStatus('Ready! Click "Start Tracking"');
+        };
+        script.onerror = () => {
+            updateStatus('Error loading MediaPipe library');
+        };
+        document.head.appendChild(script);
+
     </script>
 </body>
 </html>
