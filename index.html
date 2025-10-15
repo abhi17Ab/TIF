@@ -393,6 +393,195 @@
          * Calculate angle between three points using atan2
          * Returns angle in degrees (0-180)
          */
+            import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+// Scene setup
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+let model, skeleton, bones = {};
+
+// Load your rigged GLB model
+const loader = new GLTFLoader();
+loader.load('path/to/your-rigged-model.glb', function(gltf) {
+    model = gltf.scene;
+    scene.add(model);
+    
+    // Extract bones from the model
+    model.traverse((object) => {
+        if (object.isBone) {
+            bones[object.name] = object;
+        }
+    });
+    
+    console.log('Available bones:', Object.keys(bones));
+});
+
+camera.position.set(0, 1.5, 3);
+
+        // Bone mapping - adjust names based on your GLB rig
+const boneMapping = {
+    // Spine and torso
+    hips: 'Hips',
+    spine: 'Spine',
+    chest: 'Spine1',
+    neck: 'Neck',
+    head: 'Head',
+    
+    // Left arm
+    leftShoulder: 'LeftShoulder',
+    leftUpperArm: 'LeftArm',
+    leftLowerArm: 'LeftForeArm',
+    leftHand: 'LeftHand',
+    
+    // Right arm
+    rightShoulder: 'RightShoulder',
+    rightUpperArm: 'RightArm',
+    rightLowerArm: 'RightForeArm',
+    rightHand: 'RightHand',
+    
+    // Left leg
+    leftUpperLeg: 'LeftUpLeg',
+    leftLowerLeg: 'LeftLeg',
+    leftFoot: 'LeftFoot',
+    
+    // Right leg
+    rightUpperLeg: 'RightUpLeg',
+    rightLowerLeg: 'RightLeg',
+    rightFoot: 'RightFoot'
+};
+
+// MediaPipe landmark indices
+const POSE_LANDMARKS = {
+    NOSE: 0,
+    LEFT_SHOULDER: 11,
+    RIGHT_SHOULDER: 12,
+    LEFT_ELBOW: 13,
+    RIGHT_ELBOW: 14,
+    LEFT_WRIST: 15,
+    RIGHT_WRIST: 16,
+    LEFT_HIP: 23,
+    RIGHT_HIP: 24,
+    LEFT_KNEE: 25,
+    RIGHT_KNEE: 26,
+    LEFT_ANKLE: 27,
+    RIGHT_ANKLE: 28
+};
+/**
+ * Calculate rotation quaternion between two vectors
+ * This is the core function for joint rotation
+ */
+function calculateRotation(startPoint, midPoint, endPoint) {
+    // Create direction vectors
+    const v1 = new THREE.Vector3(
+        startPoint.x - midPoint.x,
+        startPoint.y - midPoint.y,
+        startPoint.z - midPoint.z
+    ).normalize();
+    
+    const v2 = new THREE.Vector3(
+        endPoint.x - midPoint.x,
+        endPoint.y - midPoint.y,
+        endPoint.z - midPoint.z
+    ).normalize();
+    
+    // Calculate quaternion rotation
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromUnitVectors(v1, v2);
+    
+    return quaternion;
+}
+
+/**
+ * Convert MediaPipe landmark to Three.js Vector3
+ */
+function landmarkToVector3(landmark) {
+    return new THREE.Vector3(
+        landmark.x * 2 - 1,  // Convert from [0,1] to [-1,1]
+        -(landmark.y * 2 - 1), // Invert Y axis
+        -landmark.z // Invert Z for proper depth
+    );
+}
+/**
+ * Main function to apply pose landmarks to 3D model
+ */
+function applyPoseToModel(poseLandmarks) {
+    if (!model || !bones || !poseLandmarks) return;
+    
+    // Convert landmarks to Three.js coordinates
+    const landmarks = poseLandmarks.map(landmarkToVector3);
+    
+    // Right arm rotation
+    if (bones[boneMapping.rightUpperArm]) {
+        const shoulderPos = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
+        const elbowPos = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
+        const wristPos = landmarks[POSE_LANDMARKS.RIGHT_WRIST];
+        
+        const rotation = calculateRotation(shoulderPos, elbowPos, wristPos);
+        bones[boneMapping.rightUpperArm].quaternion.copy(rotation);
+    }
+    
+    // Right forearm
+    if (bones[boneMapping.rightLowerArm]) {
+        const elbowPos = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
+        const wristPos = landmarks[POSE_LANDMARKS.RIGHT_WRIST];
+        const shoulderPos = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
+        
+        const rotation = calculateRotation(shoulderPos, elbowPos, wristPos);
+        bones[boneMapping.rightLowerArm].quaternion.copy(rotation);
+    }
+    
+    // Left arm
+    if (bones[boneMapping.leftUpperArm]) {
+        const shoulderPos = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+        const elbowPos = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
+        const wristPos = landmarks[POSE_LANDMARKS.LEFT_WRIST];
+        
+        const rotation = calculateRotation(shoulderPos, elbowPos, wristPos);
+        bones[boneMapping.leftUpperArm].quaternion.copy(rotation);
+    }
+    
+    // Right leg
+    if (bones[boneMapping.rightUpperLeg]) {
+        const hipPos = landmarks[POSE_LANDMARKS.RIGHT_HIP];
+        const kneePos = landmarks[POSE_LANDMARKS.RIGHT_KNEE];
+        const anklePos = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
+        
+        const rotation = calculateRotation(hipPos, kneePos, anklePos);
+        bones[boneMapping.rightUpperLeg].quaternion.copy(rotation);
+    }
+    
+    // Add more bones as needed...
+    
+    // Update model position based on hip center
+    const hipCenter = new THREE.Vector3()
+        .addVectors(
+            landmarks[POSE_LANDMARKS.LEFT_HIP],
+            landmarks[POSE_LANDMARKS.RIGHT_HIP]
+        )
+        .multiplyScalar(0.5);
+    
+    model.position.copy(hipCenter);
+}
+// In your MediaPipe onResults callback
+function onPoseResults(results) {
+    if (!isTracking) return;
+    
+    // Your existing canvas drawing code...
+    
+    // Apply pose to 3D model
+    if (results.poseLandmarks) {
+        applyPoseToModel(results.poseLandmarks);
+    }
+    
+    // Render Three.js scene
+    renderer.render(scene, camera);
+}
+
         function calculateAngle(firstPoint, midPoint, lastPoint) {
             const radians = Math.atan2(
                 lastPoint.y - midPoint.y,
