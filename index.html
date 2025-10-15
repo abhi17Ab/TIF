@@ -263,7 +263,7 @@
                     <h3>🎯 Armour Settings</h3>
                     <div class="metric-row">
                         <span class="metric-label">Scale</span>
-                        <span class="metric-value" id="displayScale">0.8x</span>
+                        <span class="metric-value" id="displayScale">1.2x</span>
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Offset X</span>
@@ -271,11 +271,11 @@
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Offset Y</span>
-                        <span class="metric-value" id="displayOffsetY">-0.2</span>
+                        <span class="metric-value" id="displayOffsetY">-0.3</span>
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Depth</span>
-                        <span class="metric-value" id="displayDepth">5.0</span>
+                        <span class="metric-value" id="displayDepth">3.0</span>
                     </div>
                 </div>
 
@@ -302,15 +302,15 @@
                 <div class="metric-card">
                     <h3>📍 Live Position</h3>
                     <div class="metric-row">
-                        <span class="metric-label">Hip Center X</span>
+                        <span class="metric-label">Torso Center X</span>
                         <span class="metric-value" id="hipX">--</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Hip Center Y</span>
+                        <span class="metric-label">Torso Center Y</span>
                         <span class="metric-value" id="hipY">--</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Hip Center Z</span>
+                        <span class="metric-label">Torso Center Z</span>
                         <span class="metric-value" id="hipZ">--</span>
                     </div>
                     <div class="metric-row">
@@ -363,6 +363,7 @@
             VIDEO_WIDTH: 1280,
             VIDEO_HEIGHT: 720,
             MODEL_PATH: './armour_bahubali.glb',
+            VISIBILITY_THRESHOLD: 0.5,
             MEDIAPIPE_OPTIONS: {
                 modelComplexity: 1,
                 smoothLandmarks: true,
@@ -375,12 +376,12 @@
         // ==================== MODEL SETTINGS ====================
         class ModelSettings {
             constructor() {
-                this.scale = 0.8;
+                this.scale = 1.2;
                 this.offsetX = 0.0;
-                this.offsetY = -0.2;
-                this.depthMultiplier = 5.0;
-                this.coordinateScaleX = 2.5;
-                this.coordinateScaleY = 2.5;
+                this.offsetY = -0.3;
+                this.depthMultiplier = 3.0;
+                this.coordinateScaleX = 2.0;
+                this.coordinateScaleY = 2.0;
                 this.bodyScale = 1.0;
                 this.torsoLength = 1.0;
             }
@@ -500,6 +501,7 @@
                         this.scene.add(this.model);
                         this.model.scale.set(this.settings.scale, this.settings.scale, this.settings.scale);
                         this.model.position.set(0, 0, 0);
+                        this.model.visible = false;
                         this.modelLoaded = true;
                         
                         console.log('✅ Model loaded successfully');
@@ -533,61 +535,135 @@
                 });
                 this.model = new THREE.Mesh(geometry, material);
                 this.scene.add(this.model);
+                this.model.visible = false;
                 this.modelLoaded = true;
             }
 
+            isTorsoVisible(landmarks) {
+                const torsoIndices = [11, 12, 23, 24];
+                const VISIBILITY_THRESHOLD = CONFIG.VISIBILITY_THRESHOLD;
+                
+                let visibleCount = 0;
+                for (const idx of torsoIndices) {
+                    if (landmarks[idx] && landmarks[idx].visibility > VISIBILITY_THRESHOLD) {
+                        visibleCount++;
+                    }
+                }
+                
+                return visibleCount >= 3;
+            }
+
             updateModelPose(landmarks) {
-                if (!this.modelLoaded || !this.model || !landmarks) return;
+                if (!this.modelLoaded || !this.model || !landmarks) return null;
 
                 try {
-                    const keyPoints = [11, 12, 23, 24];
-                    let centerX = 0, centerY = 0, centerZ = 0, validPoints = 0;
+                    const torsoVisible = this.isTorsoVisible(landmarks);
+                    
+                    if (!torsoVisible) {
+                        this.model.visible = false;
+                        return { visible: false };
+                    }
+                    
+                    this.model.visible = true;
 
-                    keyPoints.forEach(idx => {
+                    const shoulders = [11, 12];
+                    const hips = [23, 24];
+                    
+                    let shoulderX = 0, shoulderY = 0, shoulderZ = 0;
+                    let shoulderCount = 0;
+                    shoulders.forEach(idx => {
                         if (landmarks[idx]) {
-                            centerX += landmarks[idx].x;
-                            centerY += landmarks[idx].y;
-                            centerZ += landmarks[idx].z;
-                            validPoints++;
+                            shoulderX += landmarks[idx].x;
+                            shoulderY += landmarks[idx].y;
+                            shoulderZ += landmarks[idx].z;
+                            shoulderCount++;
                         }
                     });
-
-                    if (validPoints === 0) return;
-
-                    centerX /= validPoints;
-                    centerY /= validPoints;
-                    centerZ /= validPoints;
-
-                    // Calculate body proportions
+                    
+                    if (shoulderCount > 0) {
+                        shoulderX /= shoulderCount;
+                        shoulderY /= shoulderCount;
+                        shoulderZ /= shoulderCount;
+                    }
+                    
+                    let hipX = 0, hipY = 0, hipZ = 0;
+                    let hipCount = 0;
+                    hips.forEach(idx => {
+                        if (landmarks[idx]) {
+                            hipX += landmarks[idx].x;
+                            hipY += landmarks[idx].y;
+                            hipZ += landmarks[idx].z;
+                            hipCount++;
+                        }
+                    });
+                    
+                    if (hipCount > 0) {
+                        hipX /= hipCount;
+                        hipY /= hipCount;
+                        hipZ /= hipCount;
+                    }
+                    
+                    const centerX = (shoulderX + hipX) / 2;
+                    const centerY = (shoulderY + hipY) / 2;
+                    const centerZ = (shoulderZ + hipZ) / 2;
+                    
                     const proportions = this.calculateBodyProportions(landmarks);
                     this.settings.bodyScale = proportions.scale;
                     this.settings.torsoLength = proportions.torsoLength;
-
-                    // Transform coordinates
+                    
                     const posX = (centerX - 0.5) * this.settings.coordinateScaleX + this.settings.offsetX;
                     const posY = -(centerY - 0.5) * this.settings.coordinateScaleY + this.settings.offsetY;
-                    const posZ = -centerZ * this.settings.depthMultiplier;
-
-                    // Apply scaling and positioning
-                    const finalScale = this.settings.scale * this.settings.bodyScale;
+                    
+                    const avgZ = centerZ;
+                    const depthOffset = avgZ * this.settings.depthMultiplier;
+                    const posZ = -depthOffset;
+                    
+                    const distanceScale = 1 + (avgZ * 2);
+                    const finalScale = this.settings.scale * this.settings.bodyScale * distanceScale;
+                    
                     this.model.scale.set(finalScale, finalScale, finalScale);
                     this.model.position.set(posX, posY, posZ);
-
-                    // Calculate rotation
+                    
                     if (landmarks[11] && landmarks[12]) {
+                        const leftShoulder = landmarks[11];
+                        const rightShoulder = landmarks[12];
+                        
                         const shoulderAngle = Math.atan2(
-                            landmarks[12].y - landmarks[11].y,
-                            landmarks[12].x - landmarks[11].x
+                            rightShoulder.y - leftShoulder.y,
+                            rightShoulder.x - leftShoulder.x
                         );
-                        this.model.rotation.y = -shoulderAngle + Math.PI / 2;
+                        
+                        const shoulderDepthDiff = rightShoulder.z - leftShoulder.z;
+                        const bodyYaw = shoulderDepthDiff * Math.PI;
+                        
+                        this.model.rotation.z = shoulderAngle;
+                        this.model.rotation.y = bodyYaw;
+                        
+                        if (shoulderCount > 0 && hipCount > 0) {
+                            const torsoPitch = Math.atan2(
+                                shoulderY - hipY,
+                                shoulderZ - hipZ
+                            );
+                            this.model.rotation.x = torsoPitch * 0.3;
+                        }
                     }
 
                     this.renderer.render(this.scene, this.camera);
 
-                    return { centerX, centerY, centerZ, posX, posY, posZ, finalScale };
+                    return { 
+                        visible: true,
+                        centerX, 
+                        centerY, 
+                        centerZ, 
+                        posX, 
+                        posY, 
+                        posZ, 
+                        finalScale 
+                    };
                 } catch (error) {
                     console.error('Error updating model pose:', error);
-                    return null;
+                    this.model.visible = false;
+                    return { visible: false };
                 }
             }
 
@@ -614,7 +690,7 @@
                     Math.pow(shoulderCenter.z - hipCenter.z, 2)
                 );
 
-                const scale = Math.max(0.5, Math.min(2.0, torsoLength * 8));
+                const scale = Math.max(0.5, Math.min(2.0, torsoLength * 5));
 
                 return { scale, torsoLength };
             }
@@ -705,19 +781,16 @@
                 }
 
                 if (this.appState.showSkeleton) {
-                    // Left side (blue)
                     drawLandmarks(canvasCtx, [
                         landmarks[11], landmarks[13], landmarks[15],
                         landmarks[23], landmarks[25], landmarks[27]
                     ], { color: '#2196F3', fillColor: '#2196F3', lineWidth: 2, radius: 5 });
 
-                    // Right side (red)
                     drawLandmarks(canvasCtx, [
                         landmarks[12], landmarks[14], landmarks[16],
                         landmarks[24], landmarks[26], landmarks[28]
                     ], { color: '#FF5722', fillColor: '#FF5722', lineWidth: 2, radius: 5 });
 
-                    // Face (green)
                     drawLandmarks(canvasCtx, [
                         landmarks[0], landmarks[9], landmarks[10]
                     ], { color: '#4CAF50', fillColor: '#4CAF50', lineWidth: 2, radius: 5 });
@@ -741,7 +814,6 @@
             }
 
             calculateMetrics(landmarks) {
-                // Body height
                 if (landmarks[0] && landmarks[27] && landmarks[28]) {
                     const leftHeight = this.calculateDistance(landmarks[0], landmarks[27]);
                     const rightHeight = this.calculateDistance(landmarks[0], landmarks[28]);
@@ -749,13 +821,11 @@
                     this.domManager.displays.bodyHeight.textContent = `${avgHeight} u`;
                 }
 
-                // Shoulder width
                 if (landmarks[11] && landmarks[12]) {
                     const shoulderWidth = this.calculateDistance(landmarks[11], landmarks[12]);
                     this.domManager.displays.shoulderWidth.textContent = `${shoulderWidth.toFixed(3)} u`;
                 }
 
-                // Movement speed
                 const currentTimestamp = Date.now();
                 const timeDelta = currentTimestamp - this.appState.previousTimestamp;
 
@@ -767,7 +837,6 @@
                 this.appState.previousLandmarks = JSON.parse(JSON.stringify(landmarks));
                 this.appState.previousTimestamp = currentTimestamp;
 
-                // Posture
                 const posture = this.determinePosture(landmarks);
                 this.domManager.displays.posture.textContent = posture;
                 this.domManager.displays.landmarkCount.textContent = landmarks.length;
@@ -778,7 +847,7 @@
 
                 const result = this.threeJSRenderer.updateModelPose(landmarks);
                 
-                if (result) {
+                if (result && result.visible) {
                     this.domManager.displays.hipX.textContent = result.centerX.toFixed(3);
                     this.domManager.displays.hipY.textContent = result.centerY.toFixed(3);
                     this.domManager.displays.hipZ.textContent = result.centerZ.toFixed(3);
@@ -786,6 +855,13 @@
                     this.domManager.displays.modelY.textContent = result.posY.toFixed(2);
                     this.domManager.displays.modelZ.textContent = result.posZ.toFixed(2);
                     document.getElementById('displayScale').textContent = `${result.finalScale.toFixed(1)}x`;
+                } else {
+                    this.domManager.displays.hipX.textContent = '--';
+                    this.domManager.displays.hipY.textContent = '--';
+                    this.domManager.displays.hipZ.textContent = '--';
+                    this.domManager.displays.modelX.textContent = 'Hidden';
+                    this.domManager.displays.modelY.textContent = 'Hidden';
+                    this.domManager.displays.modelZ.textContent = 'Hidden';
                 }
             }
 
@@ -903,7 +979,7 @@
                 this.setupEventListeners();
                 this.loadModel();
                 this.modelSettings.updateDisplay();
-                this.domManager.updateStatus('✨ Ready! Start tracking and adjust armour position');
+                this.domManager.updateStatus('✨ Ready! Start tracking to wear the armour');
                 this.domManager.setButtonStates(false);
             }
 
@@ -930,7 +1006,6 @@
                     }
                 );
 
-                // Wait for model to load
                 const checkModel = setInterval(() => {
                     if (this.threeJSRenderer.modelLoaded) {
                         this.domManager.updateModelStatus('Armour: ✅ Loaded', '#4CAF50');
@@ -945,7 +1020,7 @@
                 try {
                     await this.mediaPipeProcessor.startCamera();
                     this.appState.isTracking = true;
-                    this.domManager.updateStatus('✅ Tracking! Use buttons below to adjust armour position', '#4CAF50');
+                    this.domManager.updateStatus('✅ Tracking! Armour appears when torso is visible', '#4CAF50');
                     this.domManager.setButtonStates(true);
                 } catch (error) {
                     this.domManager.updateStatus(`❌ Camera Error: ${error.message}`, '#FF5252');
@@ -984,7 +1059,6 @@
                 this.domManager.threejsCanvas.style.display = this.appState.show3DModel ? 'block' : 'none';
             }
 
-            // Adjustment methods
             adjustScale(delta) {
                 this.modelSettings.scale = Math.max(0.1, this.modelSettings.scale + delta);
                 if (this.threeJSRenderer.model) {
