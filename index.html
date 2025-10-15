@@ -3,9 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D Model Viewer - IPFS Integration</title>
+  <title>3D Model Viewer - IPFS Integration with Body Tracking</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
   <style>
     * {
       margin: 0;
@@ -249,6 +253,78 @@
       z-index: 10;
     }
     
+    /* Body tracking specific styles */
+    .tracking-controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      padding: 20px;
+      gap: 15px;
+      border-top: 2px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .tracking-status {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 10px 15px;
+      border-radius: 8px;
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: #ff4444;
+    }
+    
+    .status-indicator.active {
+      background-color: #44ff44;
+      animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+    
+    .camera-feed {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 200px;
+      height: 150px;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      z-index: 5;
+      display: none;
+    }
+    
+    .camera-feed.active {
+      display: block;
+    }
+    
+    .camera-feed video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .tracking-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 2;
+    }
+    
     @media (max-width: 768px) {
       .container {
         border-radius: 15px;
@@ -273,13 +349,18 @@
       .model-viewer-container {
         height: 60vh;
       }
+      
+      .camera-feed {
+        width: 150px;
+        height: 110px;
+      }
     }
   </style>
 </head>
 <body>
   <div class="header">
     <h1>CAMON CAMERA AR/3D PREVIEW</h1>
-    <p class="subtitle">Interactive 3D model loaded directly from IPFS with AR capabilities</p>
+    <p class="subtitle">Interactive 3D model with body tracking loaded directly from IPFS</p>
     <div class="ipfs-info">
       <i class="fas fa-database"></i>
       <span>IPFS CID: </span>
@@ -292,6 +373,7 @@
   <div class="container">
     <div class="model-viewer-container">
       <model-viewer 
+        id="armour-model"
         src="./armour.glb" 
         ar 
         ar-modes="webxr scene-viewer quick-look" 
@@ -313,6 +395,12 @@
           <i class="fas fa-mobile-alt"></i> View in AR
         </button>
       </model-viewer>
+      
+      <div class="camera-feed" id="camera-feed">
+        <video id="webcam" autoplay muted playsinline></video>
+      </div>
+      
+      <canvas class="tracking-overlay" id="overlay"></canvas>
     </div>
     
     <div class="controls">
@@ -331,6 +419,29 @@
           <button id="env-neutral"><i class="fas fa-sun"></i> Neutral</button>
           <button id="env-hall"><i class="fas fa-theater-masks"></i> Theater</button>
           <button id="env-sunset"><i class="fas fa-moon"></i> Sunset</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="tracking-controls">
+      <div class="control-group">
+        <h3><i class="fas fa-running"></i> Body Tracking</h3>
+        <div class="buttons">
+          <button id="start-tracking"><i class="fas fa-play"></i> Start Tracking</button>
+          <button id="stop-tracking"><i class="fas fa-stop"></i> Stop Tracking</button>
+          <button id="calibrate"><i class="fas fa-ruler-combined"></i> Calibrate</button>
+        </div>
+        <div class="tracking-status">
+          <div class="status-indicator" id="status-indicator"></div>
+          <span id="tracking-status-text">Tracking inactive</span>
+        </div>
+      </div>
+      
+      <div class="control-group">
+        <h3><i class="fas fa-sliders-h"></i> Tracking Options</h3>
+        <div class="buttons">
+          <button id="toggle-camera"><i class="fas fa-video"></i> Show Camera</button>
+          <button id="toggle-skeleton"><i class="fas fa-bone"></i> Show Skeleton</button>
         </div>
       </div>
     </div>
@@ -400,7 +511,7 @@
       });
       
       document.getElementById('env-hall').addEventListener('click', () => {
-        modelViewer.environmentImage = 'https://modelviewer.dev/shared-assets/environments/whipple_creek_regional_park_04_1k.hdr';
+        modelViewer.environmentImage = 'https://modelviewer.dev/shared-assets/environments/whipple_creek_regial_park_04_1k.hdr';
       });
       
       document.getElementById('env-sunset').addEventListener('click', () => {
@@ -415,6 +526,209 @@
       document.getElementById('first-person').addEventListener('click', () => {
         modelViewer.cameraOrbit = '0deg 90deg 1.5m';
       });
+      
+      // Body Tracking Implementation
+      let poseDetector = null;
+      let isTracking = false;
+      let showCamera = false;
+      let showSkeleton = false;
+      let cameraStream = null;
+      const videoElement = document.getElementById('webcam');
+      const canvasElement = document.getElementById('overlay');
+      const canvasCtx = canvasElement.getContext('2d');
+      const statusIndicator = document.getElementById('status-indicator');
+      const statusText = document.getElementById('tracking-status-text');
+      const cameraFeed = document.getElementById('camera-feed');
+      
+      // Initialize MediaPipe Pose
+      async function initializePoseDetector() {
+        try {
+          poseDetector = await pose.createDetector(
+            pose.SupportedModels.BlazePose,
+            {
+              runtime: 'mediapipe',
+              modelType: 'full',
+              solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose'
+            }
+          );
+          console.log('Pose detector initialized');
+          return true;
+        } catch (error) {
+          console.error('Error initializing pose detector:', error);
+          return false;
+        }
+      }
+      
+      // Start camera and tracking
+      async function startTracking() {
+        if (isTracking) return;
+        
+        try {
+          // Get camera access
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480, facingMode: 'user' }
+          });
+          
+          videoElement.srcObject = cameraStream;
+          
+          // Initialize pose detector if not already done
+          if (!poseDetector) {
+            const success = await initializePoseDetector();
+            if (!success) {
+              alert('Failed to initialize body tracking. Please try again.');
+              return;
+            }
+          }
+          
+          // Set up canvas for overlay
+          canvasElement.width = videoElement.videoWidth;
+          canvasElement.height = videoElement.videoHeight;
+          
+          isTracking = true;
+          statusIndicator.classList.add('active');
+          statusText.textContent = 'Tracking active';
+          
+          // Start detection loop
+          detectPose();
+        } catch (error) {
+          console.error('Error starting tracking:', error);
+          alert('Could not access camera. Please ensure camera permissions are granted.');
+        }
+      }
+      
+      // Stop tracking
+      function stopTracking() {
+        isTracking = false;
+        statusIndicator.classList.remove('active');
+        statusText.textContent = 'Tracking inactive';
+        
+        if (cameraStream) {
+          cameraStream.getTracks().forEach(track => track.stop());
+          cameraStream = null;
+        }
+        
+        // Clear canvas
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      }
+      
+      // Pose detection loop
+      async function detectPose() {
+        if (!isTracking || !poseDetector) return;
+        
+        try {
+          const poses = await poseDetector.estimatePoses(videoElement);
+          
+          if (poses.length > 0) {
+            const pose = poses[0];
+            
+            // Update 3D model position based on pose
+            updateModelPosition(pose);
+            
+            // Draw skeleton if enabled
+            if (showSkeleton) {
+              drawSkeleton(pose.keypoints);
+            }
+          } else {
+            // Clear canvas if no pose detected
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+          }
+          
+          // Continue detection
+          requestAnimationFrame(detectPose);
+        } catch (error) {
+          console.error('Error detecting pose:', error);
+          // Continue detection even if there's an error
+          requestAnimationFrame(detectPose);
+        }
+      }
+      
+      // Update 3D model position based on pose
+      function updateModelPosition(pose) {
+        // This is a simplified example - in a real implementation,
+        // you would map the pose keypoints to the rig of your 3D model
+        
+        // Get keypoints for positioning
+        const leftShoulder = pose.keypoints[11]; // MediaPipe left shoulder index
+        const rightShoulder = pose.keypoints[12]; // MediaPipe right shoulder index
+        
+        if (leftShoulder && rightShoulder && leftShoulder.score > 0.5 && rightShoulder.score > 0.5) {
+          // Calculate center point between shoulders
+          const centerX = (leftShoulder.x + rightShoulder.x) / 2;
+          const centerY = (leftShoulder.y + rightShoulder.y) / 2;
+          
+          // Convert 2D coordinates to 3D model position
+          // This is a simplified conversion - you'd need more sophisticated mapping
+          const modelX = (centerX / videoElement.videoWidth - 0.5) * 2;
+          const modelY = -(centerY / videoElement.videoHeight - 0.5) * 2;
+          
+          // Position the model (this would need to be adjusted based on your model's scale)
+          // modelViewer.position = `${modelX} ${modelY} 0`;
+          
+          // For demonstration, we'll just log the position
+          console.log(`Model position: ${modelX.toFixed(2)}, ${modelY.toFixed(2)}`);
+        }
+      }
+      
+      // Draw skeleton on canvas
+      function drawSkeleton(keypoints) {
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        canvasCtx.strokeStyle = '#44ff44';
+        canvasCtx.lineWidth = 2;
+        
+        // Draw connections between keypoints
+        const connections = pose.POSE_CONNECTIONS;
+        for (const [start, end] of connections) {
+          const startPoint = keypoints[start];
+          const endPoint = keypoints[end];
+          
+          if (startPoint.score > 0.5 && endPoint.score > 0.5) {
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(startPoint.x, startPoint.y);
+            canvasCtx.lineTo(endPoint.x, endPoint.y);
+            canvasCtx.stroke();
+          }
+        }
+        
+        // Draw keypoints
+        for (const keypoint of keypoints) {
+          if (keypoint.score > 0.5) {
+            canvasCtx.beginPath();
+            canvasCtx.arc(keypoint.x, keypoint.y, 4, 0, 2 * Math.PI);
+            canvasCtx.fillStyle = '#ff4444';
+            canvasCtx.fill();
+          }
+        }
+      }
+      
+      // Toggle camera feed visibility
+      function toggleCamera() {
+        showCamera = !showCamera;
+        if (showCamera) {
+          cameraFeed.classList.add('active');
+        } else {
+          cameraFeed.classList.remove('active');
+        }
+      }
+      
+      // Toggle skeleton visibility
+      function toggleSkeleton() {
+        showSkeleton = !showSkeleton;
+        if (!showSkeleton) {
+          canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        }
+      }
+      
+      // Calibration function
+      function calibrate() {
+        alert('Calibration would adjust the model to fit your body proportions. In a full implementation, this would capture your pose and adjust the model rig accordingly.');
+      }
+      
+      // Event listeners for tracking controls
+      document.getElementById('start-tracking').addEventListener('click', startTracking);
+      document.getElementById('stop-tracking').addEventListener('click', stopTracking);
+      document.getElementById('calibrate').addEventListener('click', calibrate);
+      document.getElementById('toggle-camera').addEventListener('click', toggleCamera);
+      document.getElementById('toggle-skeleton').addEventListener('click', toggleSkeleton);
     });
   </script>
 </body>
