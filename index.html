@@ -335,479 +335,573 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
 
     <script>
-        // ==================== GLOBAL STATE ====================
-        let pose = null;
-        let mediaPipeCamera = null;
-        let isTracking = false;
-        let showSkeleton = true;
-        let showConnections = true;
-        let show3DModel = true;
+   // ==================== GLOBAL STATE ====================
+let pose = null;
+let mediaPipeCamera = null;
+let isTracking = false;
+let showSkeleton = true;
+let showConnections = true;
+let show3DModel = true;
 
-        // Performance tracking
-        let frameCount = 0;
-        let lastTime = performance.now();
-        let fps = 0;
+// Performance tracking
+let frameCount = 0;
+let lastTime = performance.now();
+let fps = 0;
 
-        // Movement tracking
-        let previousLandmarks = null;
-        let previousTimestamp = 0;
+// Movement tracking
+let previousLandmarks = null;
+let previousTimestamp = 0;
 
-        // Landmark smoothing
-        let smoothedLandmarks = null;
-        const SMOOTHING_FACTOR = 0.5;
+// Landmark smoothing
+let smoothedLandmarks = null;
+const SMOOTHING_FACTOR = 0.7;
 
-        // ==================== THREE.JS SETUP ====================
-        let threeScene, threeCamera, threeRenderer;
-        let model3D, armourBone;
-        let modelLoaded = false;
+// ==================== THREE.JS SETUP ====================
+let threeScene, threeCamera, threeRenderer;
+let model3D, armourBone;
+let modelLoaded = false;
 
-        // Adjustable positioning parameters
-        let MODEL_SCALE = 2.0;
-        let OFFSET_X = 0.0;
-        let OFFSET_Y = 0.0;
-        let DEPTH_MULTIPLIER = 3.0;
-        let COORDINATE_SCALE_X = 2.0;
-        let COORDINATE_SCALE_Y = 2.0;
+// Adjustable positioning parameters
+let MODEL_SCALE = 0.8;
+let OFFSET_X = 0.0;
+let OFFSET_Y = -0.2;
+let DEPTH_MULTIPLIER = 5.0;
+let COORDINATE_SCALE_X = 2.5;
+let COORDINATE_SCALE_Y = 2.5;
 
-        // ==================== DOM ELEMENTS ====================
-        const videoElement = document.getElementById('webcam');
-        const canvasElement = document.getElementById('output_canvas');
-        const canvasCtx = canvasElement.getContext('2d');
-        const threejsCanvas = document.getElementById('threejs_canvas');
-        
-        const startButton = document.getElementById('startButton');
-        const stopButton = document.getElementById('stopButton');
-        const toggleSkeletonButton = document.getElementById('toggleSkeleton');
-        const toggleConnectionsButton = document.getElementById('toggleConnections');
-        const toggle3DModelButton = document.getElementById('toggle3DModel');
-        
-        const statusText = document.getElementById('statusText');
-        const landmarkCount = document.getElementById('landmarkCount');
-        const fpsCounter = document.getElementById('fpsCounter');
-        const modelStatus = document.getElementById('modelStatus');
+// Body proportions for scaling
+let bodyScale = 1.0;
+let torsoLength = 1.0;
 
-        // ==================== ADJUSTMENT FUNCTIONS ====================
-        function adjustScale(delta) {
-            MODEL_SCALE = Math.max(0.1, MODEL_SCALE + delta);
-            if (model3D) model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
-            document.getElementById('displayScale').textContent = MODEL_SCALE.toFixed(1) + 'x';
-            console.log('Scale:', MODEL_SCALE.toFixed(1));
-        }
+// ==================== DOM ELEMENTS ====================
+const videoElement = document.getElementById('webcam');
+const canvasElement = document.getElementById('output_canvas');
+const canvasCtx = canvasElement.getContext('2d');
+const threejsCanvas = document.getElementById('threejs_canvas');
 
-        function adjustOffsetX(delta) {
-            OFFSET_X += delta;
-            document.getElementById('displayOffsetX').textContent = OFFSET_X.toFixed(1);
-            console.log('Offset X:', OFFSET_X.toFixed(1));
-        }
+const startButton = document.getElementById('startButton');
+const stopButton = document.getElementById('stopButton');
+const toggleSkeletonButton = document.getElementById('toggleSkeleton');
+const toggleConnectionsButton = document.getElementById('toggleConnections');
+const toggle3DModelButton = document.getElementById('toggle3DModel');
 
-        function adjustOffsetY(delta) {
-            OFFSET_Y += delta;
-            document.getElementById('displayOffsetY').textContent = OFFSET_Y.toFixed(1);
-            console.log('Offset Y:', OFFSET_Y.toFixed(1));
-        }
+const statusText = document.getElementById('statusText');
+const landmarkCount = document.getElementById('landmarkCount');
+const fpsCounter = document.getElementById('fpsCounter');
+const modelStatus = document.getElementById('modelStatus');
 
-        function adjustDepth(delta) {
-            DEPTH_MULTIPLIER = Math.max(0.1, DEPTH_MULTIPLIER + delta);
-            document.getElementById('displayDepth').textContent = DEPTH_MULTIPLIER.toFixed(1);
-            console.log('Depth:', DEPTH_MULTIPLIER.toFixed(1));
-        }
+// ==================== ADJUSTMENT FUNCTIONS ====================
+function adjustScale(delta) {
+    MODEL_SCALE = Math.max(0.1, MODEL_SCALE + delta);
+    if (model3D) model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+    document.getElementById('displayScale').textContent = MODEL_SCALE.toFixed(1) + 'x';
+    console.log('Scale:', MODEL_SCALE.toFixed(1));
+}
 
-        // ==================== THREE.JS INITIALIZATION ====================
-        function initThreeJS() {
-            threeScene = new THREE.Scene();
+function adjustOffsetX(delta) {
+    OFFSET_X += delta;
+    document.getElementById('displayOffsetX').textContent = OFFSET_X.toFixed(1);
+    console.log('Offset X:', OFFSET_X.toFixed(1));
+}
+
+function adjustOffsetY(delta) {
+    OFFSET_Y += delta;
+    document.getElementById('displayOffsetY').textContent = OFFSET_Y.toFixed(1);
+    console.log('Offset Y:', OFFSET_Y.toFixed(1));
+}
+
+function adjustDepth(delta) {
+    DEPTH_MULTIPLIER = Math.max(0.1, DEPTH_MULTIPLIER + delta);
+    document.getElementById('displayDepth').textContent = DEPTH_MULTIPLIER.toFixed(1);
+    console.log('Depth:', DEPTH_MULTIPLIER.toFixed(1));
+}
+
+// ==================== THREE.JS INITIALIZATION ====================
+function initThreeJS() {
+    threeScene = new THREE.Scene();
+    
+    const container = threejsCanvas.parentElement;
+    const aspect = container.offsetWidth / container.offsetHeight;
+    threeCamera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
+    threeCamera.position.set(0, 0, 5);
+    threeCamera.lookAt(0, 0, 0);
+    
+    threeRenderer = new THREE.WebGLRenderer({ 
+        canvas: threejsCanvas,
+        alpha: true,
+        antialias: true 
+    });
+    threeRenderer.setSize(container.offsetWidth, container.offsetHeight);
+    threeRenderer.setClearColor(0x000000, 0);
+    
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    threeScene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    directionalLight.position.set(1, 2, 1);
+    threeScene.add(directionalLight);
+    
+    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight2.position.set(-1, 1, -1);
+    threeScene.add(directionalLight2);
+    
+    loadGLBModel();
+}
+
+function loadGLBModel() {
+    const modelPath = './armour_bahubali.glb';
+    
+    const loader = new THREE.GLTFLoader();
+    loader.load(
+        modelPath,
+        function(gltf) {
+            model3D = gltf.scene;
+            threeScene.add(model3D);
             
-            const container = threejsCanvas.parentElement;
-            const aspect = container.offsetWidth / container.offsetHeight;
-            threeCamera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
-            threeCamera.position.set(0, 1, 3);
-            threeCamera.lookAt(0, 1, 0);
+            console.log('🔍 Model loaded. Searching for bones...');
             
-            threeRenderer = new THREE.WebGLRenderer({ 
-                canvas: threejsCanvas,
-                alpha: true,
-                antialias: true 
-            });
-            threeRenderer.setSize(container.offsetWidth, container.offsetHeight);
-            threeRenderer.setClearColor(0x000000, 0);
-            
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
-            threeScene.add(ambientLight);
-            
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            directionalLight.position.set(1, 2, 1);
-            threeScene.add(directionalLight);
-            
-            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight2.position.set(-1, 1, -1);
-            threeScene.add(directionalLight2);
-            
-            loadGLBModel();
-        }
-
-        function loadGLBModel() {
-            const modelPath = './armour_bahubali.glb';
-            
-            const loader = new THREE.GLTFLoader();
-            loader.load(
-                modelPath,
-                function(gltf) {
-                    model3D = gltf.scene;
-                    threeScene.add(model3D);
-                    
-                    console.log('🔍 Model loaded. Searching for "Bone"...');
-                    
-                    let allBones = [];
-                    model3D.traverse((object) => {
-                        if (object.isBone) {
-                            allBones.push(object.name);
-                            if (object.name === 'Bone') {
-                                armourBone = object;
-                                console.log('✅ Found "Bone":', object);
-                            }
-                        }
-                    });
-                    
-                    console.log('Available bones:', allBones);
-                    
-                    modelLoaded = true;
-                    modelStatus.textContent = 'Armour: ✅ Loaded';
-                    modelStatus.style.color = '#4CAF50';
-                    
-                    model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
-                    model3D.position.set(0, 0, 0);
-                    
-                    console.log('✅ Armour ready. Use adjustment buttons to align.');
-                },
-                function(xhr) {
-                    const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
-                    modelStatus.textContent = `Armour: Loading ${percent}%`;
-                },
-                function(error) {
-                    console.error('❌ Error loading armour:', error);
-                    modelStatus.textContent = 'Armour: ❌ Load Failed';
-                    modelStatus.style.color = '#FF5252';
+            let allBones = [];
+            model3D.traverse((object) => {
+                if (object.isBone) {
+                    allBones.push(object.name);
+                    console.log('Found bone:', object.name);
                 }
+            });
+            
+            console.log('Available bones:', allBones);
+            
+            modelLoaded = true;
+            modelStatus.textContent = 'Armour: ✅ Loaded';
+            modelStatus.style.color = '#4CAF50';
+            
+            model3D.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+            model3D.position.set(0, 0, 0);
+            
+            console.log('✅ Armour ready. Use adjustment buttons to align.');
+        },
+        function(xhr) {
+            const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
+            modelStatus.textContent = `Armour: Loading ${percent}%`;
+        },
+        function(error) {
+            console.error('❌ Error loading armour:', error);
+            modelStatus.textContent = 'Armour: ❌ Load Failed';
+            modelStatus.style.color = '#FF5252';
+            
+            // Create a placeholder cube for testing
+            const geometry = new THREE.BoxGeometry(1, 2, 0.5);
+            const material = new THREE.MeshPhongMaterial({ 
+                color: 0x8B4513,
+                transparent: true,
+                opacity: 0.8
+            });
+            model3D = new THREE.Mesh(geometry, material);
+            threeScene.add(model3D);
+            modelLoaded = true;
+            modelStatus.textContent = 'Armour: Using Placeholder';
+            modelStatus.style.color = '#FFA726';
+        }
+    );
+}
+
+// ==================== BODY PROPORTION CALCULATIONS ====================
+function calculateBodyProportions(landmarks) {
+    if (!landmarks[11] || !landmarks[12] || !landmarks[23] || !landmarks[24]) {
+        return { scale: 1.0, torsoLength: 1.0 };
+    }
+    
+    // Calculate shoulder width
+    const shoulderWidth = Math.abs(landmarks[11].x - landmarks[12].x);
+    
+    // Calculate torso length (shoulders to hips)
+    const leftShoulder = landmarks[11];
+    const rightShoulder = landmarks[12];
+    const leftHip = landmarks[23];
+    const rightHip = landmarks[24];
+    
+    const shoulderCenter = {
+        x: (leftShoulder.x + rightShoulder.x) / 2,
+        y: (leftShoulder.y + rightShoulder.y) / 2,
+        z: (leftShoulder.z + rightShoulder.z) / 2
+    };
+    
+    const hipCenter = {
+        x: (leftHip.x + rightHip.x) / 2,
+        y: (leftHip.y + rightHip.y) / 2,
+        z: (leftHip.z + rightHip.z) / 2
+    };
+    
+    const torsoLength = Math.sqrt(
+        Math.pow(shoulderCenter.x - hipCenter.x, 2) +
+        Math.pow(shoulderCenter.y - hipCenter.y, 2) +
+        Math.pow(shoulderCenter.z - hipCenter.z, 2)
+    );
+    
+    // Calculate scale based on torso proportions
+    const scale = Math.max(0.5, Math.min(2.0, torsoLength * 8));
+    
+    return { scale, torsoLength };
+}
+
+// ==================== LANDMARK SMOOTHING ====================
+function smoothLandmarks(currentLandmarks, previousLandmarks, factor) {
+    if (!previousLandmarks) return currentLandmarks;
+    
+    return currentLandmarks.map((landmark, index) => {
+        const prev = previousLandmarks[index];
+        if (!prev) return landmark;
+        
+        return {
+            x: prev.x + (landmark.x - prev.x) * (1 - factor),
+            y: prev.y + (landmark.y - prev.y) * (1 - factor),
+            z: prev.z + (landmark.z - prev.z) * (1 - factor),
+            visibility: landmark.visibility
+        };
+    });
+}
+
+// ==================== UTILITY FUNCTIONS ====================
+function calculateDistance(point1, point2) {
+    const dx = point2.x - point1.x;
+    const dy = point2.y - point1.y;
+    const dz = (point2.z || 0) - (point1.z || 0);
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+function calculateVelocity(currentLandmarks, previousLandmarks, timeDelta) {
+    if (!previousLandmarks || timeDelta === 0) return 0;
+    let totalMovement = 0;
+    const keyPoints = [11, 12, 23, 24];
+    keyPoints.forEach(idx => {
+        if (currentLandmarks[idx] && previousLandmarks[idx]) {
+            totalMovement += calculateDistance(
+                currentLandmarks[idx],
+                previousLandmarks[idx]
             );
         }
+    });
+    return (totalMovement / keyPoints.length) / timeDelta * 1000;
+}
 
-        // ==================== LANDMARK SMOOTHING ====================
-        function smoothLandmarks(currentLandmarks, previousLandmarks, factor) {
-            if (!previousLandmarks) return currentLandmarks;
+function determinePosture(landmarks) {
+    const nose = landmarks[0];
+    const leftHip = landmarks[23];
+    const rightHip = landmarks[24];
+    const leftKnee = landmarks[25];
+    const rightKnee = landmarks[26];
+
+    if (!nose || !leftHip || !rightHip || !leftKnee || !rightKnee) {
+        return "Unknown";
+    }
+
+    const hipMidY = (leftHip.y + rightHip.y) / 2;
+    const kneeMidY = (leftKnee.y + rightKnee.y) / 2;
+    const noseToHipDist = Math.abs(nose.y - hipMidY);
+    const hipToKneeDist = Math.abs(hipMidY - kneeMidY);
+
+    if (noseToHipDist < 0.2) return "Lying Down";
+    else if (hipToKneeDist < 0.15) return "Sitting";
+    else if (nose.y < hipMidY && hipToKneeDist > 0.15) return "Standing";
+    else return "Transitioning";
+}
+
+// ==================== APPLY POSE TO ARMOUR ====================
+function applyPoseToModel(poseLandmarks) {
+    if (!modelLoaded || !model3D || !poseLandmarks || !show3DModel) return;
+    
+    try {
+        const landmarks = poseLandmarks;
+        
+        // Calculate body center using multiple points for better stability
+        const keyPoints = [11, 12, 23, 24]; // shoulders and hips
+        let centerX = 0, centerY = 0, centerZ = 0;
+        let validPoints = 0;
+        
+        keyPoints.forEach(idx => {
+            if (landmarks[idx]) {
+                centerX += landmarks[idx].x;
+                centerY += landmarks[idx].y;
+                centerZ += landmarks[idx].z;
+                validPoints++;
+            }
+        });
+        
+        if (validPoints === 0) return;
+        
+        centerX /= validPoints;
+        centerY /= validPoints;
+        centerZ /= validPoints;
+        
+        // Calculate body proportions for dynamic scaling
+        const proportions = calculateBodyProportions(landmarks);
+        bodyScale = proportions.scale;
+        torsoLength = proportions.torsoLength;
+        
+        // Update raw body position display
+        document.getElementById('hipX').textContent = centerX.toFixed(3);
+        document.getElementById('hipY').textContent = centerY.toFixed(3);
+        document.getElementById('hipZ').textContent = centerZ.toFixed(3);
+        
+        // Convert MediaPipe normalized coordinates to Three.js world space
+        // Flip Y axis (MediaPipe: 0 at top, Three.js: 0 at center)
+        const posX = (centerX - 0.5) * COORDINATE_SCALE_X + OFFSET_X;
+        const posY = -(centerY - 0.5) * COORDINATE_SCALE_Y + OFFSET_Y;
+        const posZ = -centerZ * DEPTH_MULTIPLIER;
+        
+        // Apply dynamic scaling based on body proportions
+        const finalScale = MODEL_SCALE * bodyScale;
+        model3D.scale.set(finalScale, finalScale, finalScale);
+        
+        // Position the model
+        model3D.position.set(posX, posY, posZ);
+        
+        // Calculate rotation based on shoulder orientation
+        if (landmarks[11] && landmarks[12]) {
+            const leftShoulder = landmarks[11];
+            const rightShoulder = landmarks[12];
             
-            return currentLandmarks.map((landmark, index) => {
-                const prev = previousLandmarks[index];
-                if (!prev) return landmark;
-                
-                return {
-                    x: prev.x + (landmark.x - prev.x) * (1 - factor),
-                    y: prev.y + (landmark.y - prev.y) * (1 - factor),
-                    z: prev.z + (landmark.z - prev.z) * (1 - factor),
-                    visibility: landmark.visibility
-                };
+            // Calculate angle between shoulders for rotation
+            const shoulderAngle = Math.atan2(
+                rightShoulder.y - leftShoulder.y,
+                rightShoulder.x - leftShoulder.x
+            );
+            
+            // Apply rotation to make armour face forward
+            model3D.rotation.y = -shoulderAngle + Math.PI / 2;
+        }
+        
+        // Update display
+        document.getElementById('modelX').textContent = posX.toFixed(2);
+        document.getElementById('modelY').textContent = posY.toFixed(2);
+        document.getElementById('modelZ').textContent = posZ.toFixed(2);
+        
+        // Update scale display to show final scale
+        document.getElementById('displayScale').textContent = finalScale.toFixed(1) + 'x';
+
+        // Render the scene
+        threeRenderer.render(threeScene, threeCamera);
+        
+    } catch (error) {
+        console.error('Error applying pose to armour:', error);
+    }
+}
+
+// ==================== MEDIAPIPE ====================
+function initializePose() {
+    pose = new Pose({
+        locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+        }
+    });
+
+    pose.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7
+    });
+
+    pose.onResults(onPoseResults);
+}
+
+function onPoseResults(results) {
+    if (!isTracking) return;
+
+    frameCount++;
+    const currentTime = performance.now();
+    if (currentTime - lastTime >= 1000) {
+        fps = Math.round(frameCount * 1000 / (currentTime - lastTime));
+        fpsCounter.textContent = `FPS: ${fps}`;
+        frameCount = 0;
+        lastTime = currentTime;
+    }
+
+    canvasElement.width = videoElement.videoWidth;
+    canvasElement.height = videoElement.videoHeight;
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    canvasCtx.save();
+    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+    canvasCtx.restore();
+
+    if (results.poseLandmarks) {
+        const landmarks = smoothLandmarks(
+            results.poseLandmarks, 
+            smoothedLandmarks, 
+            SMOOTHING_FACTOR
+        );
+        smoothedLandmarks = landmarks;
+        
+        if (showConnections) {
+            drawConnectors(canvasCtx, landmarks, POSE_CONNECTIONS, {
+                color: '#00FF88',
+                lineWidth: 3
             });
         }
 
-        // ==================== UTILITY FUNCTIONS ====================
-        function calculateDistance(point1, point2) {
-            const dx = point2.x - point1.x;
-            const dy = point2.y - point1.y;
-            const dz = (point2.z || 0) - (point1.z || 0);
-            return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (showSkeleton) {
+            drawLandmarks(canvasCtx, [
+                landmarks[11], landmarks[13], landmarks[15],
+                landmarks[23], landmarks[25], landmarks[27]
+            ], { color: '#2196F3', fillColor: '#2196F3', lineWidth: 2, radius: 5 });
+
+            drawLandmarks(canvasCtx, [
+                landmarks[12], landmarks[14], landmarks[16],
+                landmarks[24], landmarks[26], landmarks[28]
+            ], { color: '#FF5722', fillColor: '#FF5722', lineWidth: 2, radius: 5 });
+
+            drawLandmarks(canvasCtx, [
+                landmarks[0], landmarks[9], landmarks[10]
+            ], { color: '#4CAF50', fillColor: '#4CAF50', lineWidth: 2, radius: 5 });
         }
 
-        function calculateVelocity(currentLandmarks, previousLandmarks, timeDelta) {
-            if (!previousLandmarks || timeDelta === 0) return 0;
-            let totalMovement = 0;
-            const keyPoints = [11, 12, 23, 24];
-            keyPoints.forEach(idx => {
-                if (currentLandmarks[idx] && previousLandmarks[idx]) {
-                    totalMovement += calculateDistance(
-                        currentLandmarks[idx],
-                        previousLandmarks[idx]
-                    );
-                }
-            });
-            return (totalMovement / keyPoints.length) / timeDelta * 1000;
+        // Calculate metrics
+        if (landmarks[0] && landmarks[27] && landmarks[28]) {
+            const leftHeight = calculateDistance(landmarks[0], landmarks[27]);
+            const rightHeight = calculateDistance(landmarks[0], landmarks[28]);
+            const avgHeight = ((leftHeight + rightHeight) / 2).toFixed(3);
+            document.getElementById('bodyHeight').textContent = `${avgHeight} u`;
         }
 
-        function determinePosture(landmarks) {
-            const nose = landmarks[0];
-            const leftHip = landmarks[23];
-            const rightHip = landmarks[24];
-            const leftKnee = landmarks[25];
-            const rightKnee = landmarks[26];
-
-            if (!nose || !leftHip || !rightHip || !leftKnee || !rightKnee) {
-                return "Unknown";
-            }
-
-            const hipMidY = (leftHip.y + rightHip.y) / 2;
-            const kneeMidY = (leftKnee.y + rightKnee.y) / 2;
-            const noseToHipDist = Math.abs(nose.y - hipMidY);
-            const hipToKneeDist = Math.abs(hipMidY - kneeMidY);
-
-            if (noseToHipDist < 0.2) return "Lying Down";
-            else if (hipToKneeDist < 0.15) return "Sitting";
-            else if (nose.y < hipMidY && hipToKneeDist > 0.15) return "Standing";
-            else return "Transitioning";
+        if (landmarks[11] && landmarks[12]) {
+            const shoulderWidth = calculateDistance(landmarks[11], landmarks[12]);
+            document.getElementById('shoulderWidth').textContent = `${shoulderWidth.toFixed(3)} u`;
         }
 
-        // ==================== APPLY POSE TO ARMOUR ====================
-        function applyPoseToModel(poseLandmarks) {
-            if (!modelLoaded || !model3D || !poseLandmarks || !show3DModel) return;
-            
-            try {
-                const landmarks = poseLandmarks;
-                
-                // Calculate hip center (waist position) - landmarks 23 & 24
-                if (landmarks[23] && landmarks[24]) {
-                    const hipMidX = (landmarks[23].x + landmarks[24].x) / 2;
-                    const hipMidY = (landmarks[23].y + landmarks[24].y) / 2;
-                    const hipMidZ = (landmarks[23].z + landmarks[24].z) / 2;
-                    
-                    // Update raw hip position display
-                    document.getElementById('hipX').textContent = hipMidX.toFixed(3);
-                    document.getElementById('hipY').textContent = hipMidY.toFixed(3);
-                    document.getElementById('hipZ').textContent = hipMidZ.toFixed(3);
-                    
-                    // Convert MediaPipe normalized coordinates [0,1] to Three.js world space
-                    // MediaPipe: 0,0 is top-left, 1,1 is bottom-right
-                    // Three.js: -1,-1 to 1,1 with center at 0,0
-                    
-                    const posX = (hipMidX - 0.5) * COORDINATE_SCALE_X + OFFSET_X;
-                    const posY = -(hipMidY - 0.5) * COORDINATE_SCALE_Y + OFFSET_Y;
-                    const posZ = -hipMidZ * DEPTH_MULTIPLIER;
-                    
-                    // Position the model
-                    model3D.position.set(posX, posY, posZ);
-                    
-                    // Update display
-                    document.getElementById('modelX').textContent = posX.toFixed(2);
-                    document.getElementById('modelY').textContent = posY.toFixed(2);
-                    document.getElementById('modelZ').textContent = posZ.toFixed(2);
-                }
-
-                // Render the scene
-                threeRenderer.render(threeScene, threeCamera);
-                
-            } catch (error) {
-                console.error('Error applying pose to armour:', error);
-            }
+        const currentTimestamp = Date.now();
+        const timeDelta = currentTimestamp - previousTimestamp;
+        
+        if (previousLandmarks && timeDelta > 0) {
+            const velocity = calculateVelocity(landmarks, previousLandmarks, timeDelta);
+            document.getElementById('movementSpeed').textContent = velocity.toFixed(3) + ' u/s';
         }
 
-        // ==================== MEDIAPIPE ====================
-        function initializePose() {
-            pose = new Pose({
-                locateFile: (file) => {
-                    return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-                }
-            });
+        previousLandmarks = JSON.parse(JSON.stringify(landmarks));
+        previousTimestamp = currentTimestamp;
 
-            pose.setOptions({
-                modelComplexity: 1,
-                smoothLandmarks: true,
-                enableSegmentation: false,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
+        const posture = determinePosture(landmarks);
+        document.getElementById('posture').textContent = posture;
+        landmarkCount.textContent = landmarks.length;
 
-            pose.onResults(onPoseResults);
-        }
+        // Apply armour position
+        applyPoseToModel(landmarks);
+    } else {
+        landmarkCount.textContent = '0';
+    }
+}
 
-        function onPoseResults(results) {
-            if (!isTracking) return;
+// ==================== CAMERA CONTROL ====================
+async function startTracking() {
+    if (isTracking) return;
 
-            frameCount++;
-            const currentTime = performance.now();
-            if (currentTime - lastTime >= 1000) {
-                fps = Math.round(frameCount * 1000 / (currentTime - lastTime));
-                fpsCounter.textContent = `FPS: ${fps}`;
-                frameCount = 0;
-                lastTime = currentTime;
-            }
+    try {
+        if (!pose) initializePose();
+        if (!threeScene) initThreeJS();
 
-            canvasElement.width = videoElement.videoWidth;
-            canvasElement.height = videoElement.videoHeight;
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.save();
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.restore();
-
-            if (results.poseLandmarks) {
-                const landmarks = smoothLandmarks(
-                    results.poseLandmarks, 
-                    smoothedLandmarks, 
-                    SMOOTHING_FACTOR
-                );
-                smoothedLandmarks = landmarks;
-                
-                if (showConnections) {
-                    drawConnectors(canvasCtx, landmarks, POSE_CONNECTIONS, {
-                        color: '#00FF88',
-                        lineWidth: 3
-                    });
-                }
-
-                if (showSkeleton) {
-                    drawLandmarks(canvasCtx, [
-                        landmarks[11], landmarks[13], landmarks[15],
-                        landmarks[23], landmarks[25], landmarks[27]
-                    ], { color: '#2196F3', fillColor: '#2196F3', lineWidth: 2, radius: 5 });
-
-                    drawLandmarks(canvasCtx, [
-                        landmarks[12], landmarks[14], landmarks[16],
-                        landmarks[24], landmarks[26], landmarks[28]
-                    ], { color: '#FF5722', fillColor: '#FF5722', lineWidth: 2, radius: 5 });
-
-                    drawLandmarks(canvasCtx, [
-                        landmarks[0], landmarks[9], landmarks[10]
-                    ], { color: '#4CAF50', fillColor: '#4CAF50', lineWidth: 2, radius: 5 });
-                }
-
-                // Calculate metrics
-                if (landmarks[0] && landmarks[27] && landmarks[28]) {
-                    const leftHeight = calculateDistance(landmarks[0], landmarks[27]);
-                    const rightHeight = calculateDistance(landmarks[0], landmarks[28]);
-                    const avgHeight = ((leftHeight + rightHeight) / 2).toFixed(3);
-                    document.getElementById('bodyHeight').textContent = `${avgHeight} u`;
-                }
-
-                if (landmarks[11] && landmarks[12]) {
-                    const shoulderWidth = calculateDistance(landmarks[11], landmarks[12]);
-                    document.getElementById('shoulderWidth').textContent = `${shoulderWidth.toFixed(3)} u`;
-                }
-
-                const currentTimestamp = Date.now();
-                const timeDelta = currentTimestamp - previousTimestamp;
-                
-                if (previousLandmarks && timeDelta > 0) {
-                    const velocity = calculateVelocity(landmarks, previousLandmarks, timeDelta);
-                    document.getElementById('movementSpeed').textContent = velocity.toFixed(3) + ' u/s';
-                }
-
-                previousLandmarks = JSON.parse(JSON.stringify(landmarks));
-                previousTimestamp = currentTimestamp;
-
-                const posture = determinePosture(landmarks);
-                document.getElementById('posture').textContent = posture;
-                landmarkCount.textContent = landmarks.length;
-
-                // Apply armour position
-                applyPoseToModel(landmarks);
-            }
-        }
-
-        // ==================== CAMERA CONTROL ====================
-        async function startTracking() {
-            if (isTracking) return;
-
-            try {
-                if (!pose) initializePose();
-                if (!threeScene) initThreeJS();
-
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        facingMode: 'user'
-                    }
-                });
-
-                videoElement.srcObject = stream;
-                await new Promise((resolve) => {
-                    videoElement.onloadedmetadata = () => resolve();
-                });
-
-                mediaPipeCamera = new Camera(videoElement, {
-                    onFrame: async () => {
-                        if (isTracking) {
-                            await pose.send({ image: videoElement });
-                        }
-                    },
-                    width: 1280,
-                    height: 720
-                });
-
-                await mediaPipeCamera.start();
-                isTracking = true;
-                statusText.textContent = '✅ Tracking! Use buttons below to adjust armour position';
-                statusText.style.color = '#4CAF50';
-                
-                startButton.disabled = true;
-                stopButton.disabled = false;
-
-            } catch (error) {
-                console.error('Error starting tracking:', error);
-                statusText.textContent = '❌ Camera Error: ' + error.message;
-                statusText.style.color = '#FF5252';
-            }
-        }
-
-        function stopTracking() {
-            isTracking = false;
-            
-            if (mediaPipeCamera) mediaPipeCamera.stop();
-            if (videoElement.srcObject) {
-                videoElement.srcObject.getTracks().forEach(track => track.stop());
-                videoElement.srcObject = null;
-            }
-            
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            statusText.textContent = '⏸ Tracking Stopped';
-            statusText.style.color = '#FFA726';
-            landmarkCount.textContent = '0';
-            fpsCounter.textContent = 'FPS: 0';
-            
-            startButton.disabled = false;
-            stopButton.disabled = true;
-        }
-
-        function toggleSkeleton() {
-            showSkeleton = !showSkeleton;
-            toggleSkeletonButton.classList.toggle('active');
-        }
-
-        function toggleConnections() {
-            showConnections = !showConnections;
-            toggleConnectionsButton.classList.toggle('active');
-        }
-
-        function toggle3DModel() {
-            show3DModel = !show3DModel;
-            toggle3DModelButton.classList.toggle('active');
-            threejsCanvas.style.display = show3DModel ? 'block' : 'none';
-        }
-
-        // ==================== EVENT LISTENERS ====================
-        startButton.addEventListener('click', startTracking);
-        stopButton.addEventListener('click', stopTracking);
-        toggleSkeletonButton.addEventListener('click', toggleSkeleton);
-        toggleConnectionsButton.addEventListener('click', toggleConnections);
-        toggle3DModelButton.addEventListener('click', toggle3DModel);
-
-        window.addEventListener('resize', () => {
-            if (threeRenderer && threeCamera && threejsCanvas.parentElement) {
-                const container = threejsCanvas.parentElement;
-                const width = container.offsetWidth;
-                const height = container.offsetHeight;
-                threeRenderer.setSize(width, height);
-                threeCamera.aspect = width / height;
-                threeCamera.updateProjectionMatrix();
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: 'user'
             }
         });
 
-        window.addEventListener('load', () => {
-            statusText.textContent = '✨ Ready! Start tracking and adjust armour position';
-            stopButton.disabled = true;
-            document.getElementById('displayScale').textContent = MODEL_SCALE.toFixed(1) + 'x';
-            document.getElementById('displayOffsetX').textContent = OFFSET_X.toFixed(1);
-            document.getElementById('displayOffsetY').textContent = OFFSET_Y.toFixed(1);
-            document.getElementById('displayDepth').textContent = DEPTH_MULTIPLIER.toFixed(1);
-            initThreeJS();
+        videoElement.srcObject = stream;
+        await new Promise((resolve) => {
+            videoElement.onloadedmetadata = () => resolve();
         });
 
-        window.addEventListener('beforeunload', () => {
-            if (isTracking) stopTracking();
+        mediaPipeCamera = new Camera(videoElement, {
+            onFrame: async () => {
+                if (isTracking) {
+                    await pose.send({ image: videoElement });
+                }
+            },
+            width: 1280,
+            height: 720
+        });
+
+        await mediaPipeCamera.start();
+        isTracking = true;
+        statusText.textContent = '✅ Tracking! Use buttons below to adjust armour position';
+        statusText.style.color = '#4CAF50';
+        
+        startButton.disabled = true;
+        stopButton.disabled = false;
+
+    } catch (error) {
+        console.error('Error starting tracking:', error);
+        statusText.textContent = '❌ Camera Error: ' + error.message;
+        statusText.style.color = '#FF5252';
+    }
+}
+
+function stopTracking() {
+    isTracking = false;
+    
+    if (mediaPipeCamera) mediaPipeCamera.stop();
+    if (videoElement.srcObject) {
+        videoElement.srcObject.getTracks().forEach(track => track.stop());
+        videoElement.srcObject = null;
+    }
+    
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    statusText.textContent = '⏸ Tracking Stopped';
+    statusText.style.color = '#FFA726';
+    landmarkCount.textContent = '0';
+    fpsCounter.textContent = 'FPS: 0';
+    
+    startButton.disabled = false;
+    stopButton.disabled = true;
+}
+
+function toggleSkeleton() {
+    showSkeleton = !showSkeleton;
+    toggleSkeletonButton.classList.toggle('active');
+}
+
+function toggleConnections() {
+    showConnections = !showConnections;
+    toggleConnectionsButton.classList.toggle('active');
+}
+
+function toggle3DModel() {
+    show3DModel = !show3DModel;
+    toggle3DModelButton.classList.toggle('active');
+    threejsCanvas.style.display = show3DModel ? 'block' : 'none';
+}
+
+// ==================== EVENT LISTENERS ====================
+startButton.addEventListener('click', startTracking);
+stopButton.addEventListener('click', stopTracking);
+toggleSkeletonButton.addEventListener('click', toggleSkeleton);
+toggleConnectionsButton.addEventListener('click', toggleConnections);
+toggle3DModelButton.addEventListener('click', toggle3DModel);
+
+window.addEventListener('resize', () => {
+    if (threeRenderer && threeCamera && threejsCanvas.parentElement) {
+        const container = threejsCanvas.parentElement;
+        const width = container.offsetWidth;
+        const height = container.offsetHeight;
+        threeRenderer.setSize(width, height);
+        threeCamera.aspect = width / height;
+        threeCamera.updateProjectionMatrix();
+    }
+});
+
+window.addEventListener('load', () => {
+    statusText.textContent = '✨ Ready! Start tracking and adjust armour position';
+    stopButton.disabled = true;
+    document.getElementById('displayScale').textContent = MODEL_SCALE.toFixed(1) + 'x';
+    document.getElementById('displayOffsetX').textContent = OFFSET_X.toFixed(1);
+    document.getElementById('displayOffsetY').textContent = OFFSET_Y.toFixed(1);
+    document.getElementById('displayDepth').textContent = DEPTH_MULTIPLIER.toFixed(1);
+    initThreeJS();
+});
+
+window.addEventListener('beforeunload', () => {
+    if (isTracking) stopTracking();
+});
         });
     </script>
 </body>
