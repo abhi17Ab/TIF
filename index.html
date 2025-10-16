@@ -97,7 +97,7 @@
         let isModelLoaded = false;
         
         // Smoothing
-        let smoothedScale = 0.5;
+        let smoothedScale = 0.3;
         let smoothedPosX = 0;
         let smoothedPosY = 0;
         let smoothedPosZ = 0;
@@ -200,7 +200,7 @@
             console.log("✓ Three.js ready");
         }
         
-        // ==================== LOAD ARMOR MODEL ====================
+        // ==================== LOAD ARMOR MODEL WITH BLENDER FIXES ====================
         function loadArmorModel() {
             const loader = new GLTFLoader();
             
@@ -212,37 +212,39 @@
                 (gltf) => {
                     const loadedModel = gltf.scene;
                     
-                    // Center the model
+                    // Calculate bounding box for proper scaling
                     const box = new THREE.Box3().setFromObject(loadedModel);
                     const center = box.getCenter(new THREE.Vector3());
                     const size = box.getSize(new THREE.Vector3());
                     
-                    // Calculate a scale factor to normalize the model size
+                    // Normalize model size - adjust this factor based on your model
                     const maxDim = Math.max(size.x, size.y, size.z);
-                    const scaleFactor = 1.0 / maxDim; // Normalize to 1 unit
+                    const scaleFactor = 0.8 / maxDim;
                     
+                    // Apply scale and center the model
                     loadedModel.scale.setScalar(scaleFactor);
                     loadedModel.position.sub(center.multiplyScalar(scaleFactor));
                     
-                    // FIX: Apply proper rotation to match camera view
-                    // Remove previous rotation fixes and start fresh
-                    loadedModel.rotation.set(0, 0, 0);
+                    // FIX: Apply comprehensive Blender-to-Three.js coordinate correction
+                    // This handles the coordinate system differences
+                    loadedModel.rotation.x = 0;  // Reset X rotation
+                    loadedModel.rotation.y = Math.PI; // Face forward in mirrored space
+                    loadedModel.rotation.z = 0;  // Reset Z rotation
+                    
+                    // Update matrix to apply transformations
+                    loadedModel.updateMatrixWorld(true);
                     
                     // Create parent group for better control
                     const modelGroup = new THREE.Group();
-                    
-                    // FIX: Apply coordinate system correction
-                    // Since canvas is mirrored, we need to counter-rotate the model
-                    modelGroup.rotation.y = Math.PI; // Face the correct direction in mirrored space
-                    
                     modelGroup.add(loadedModel);
                     scene.add(modelGroup);
-                    armorModel = modelGroup;
                     
+                    armorModel = modelGroup;
                     armorModel.visible = false;
                     isModelLoaded = true;
                     
-                    console.log("✓ Armor loaded");
+                    console.log("✓ Armor loaded with Blender fixes");
+                    console.log("Model bounds:", { center, size, scaleFactor });
                     statusDiv.textContent = "Ready - stand in view";
                     statusDiv.className = "ready";
                 },
@@ -260,31 +262,31 @@
             );
         }
         
-        // ==================== CORRECTED COORDINATE SYSTEM TRACKING ====================
+        // ==================== IMPROVED POSE TRACKING ====================
         function positionArmorOnBody(landmarks) {
             if (!armorModel || !isModelLoaded) return;
             
-            // Key landmarks
+            // Key landmarks for torso tracking
             const leftShoulder = landmarks[11];
             const rightShoulder = landmarks[12];
             const leftHip = landmarks[23];
             const rightHip = landmarks[24];
             const nose = landmarks[0];
             
-            // Visibility check
+            // Visibility check - ensure key points are visible
             const minVisibility = 0.5;
             if (leftShoulder.visibility < minVisibility || 
                 rightShoulder.visibility < minVisibility ||
                 leftHip.visibility < minVisibility || 
                 rightHip.visibility < minVisibility) {
                 armorModel.visible = false;
-                statusDiv.textContent = "Show your torso";
+                statusDiv.textContent = "Show your torso clearly";
                 statusDiv.className = "loading";
                 return;
             }
             
-            // ==================== CORRECTED POSITION TRACKING ====================
-            // Calculate chest center in normalized coordinates (0-1)
+            // ==================== POSITION CALCULATION ====================
+            // Calculate body center points
             const shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2;
             const shoulderCenterY = (leftShoulder.y + rightShoulder.y) / 2;
             const shoulderCenterZ = (leftShoulder.z + rightShoulder.z) / 2;
@@ -293,90 +295,85 @@
             const hipCenterY = (leftHip.y + rightHip.y) / 2;
             const hipCenterZ = (leftHip.z + rightHip.z) / 2;
             
-            // Chest anchor (weighted toward shoulders)
+            // Chest anchor point (weighted toward shoulders for armor)
             const chestX = shoulderCenterX * 0.7 + hipCenterX * 0.3;
             const chestY = shoulderCenterY * 0.7 + hipCenterY * 0.3;
             const chestZ = shoulderCenterZ * 0.7 + hipCenterZ * 0.3;
             
-            // FIX: Correct coordinate system mapping for mirrored canvas
-            // Convert MediaPipe coordinates (0-1) to Three.js world coordinates
-            const targetPosX = (chestX - 0.5) * 2.5;      // Reduced scale for better positioning
-            const targetPosY = -(chestY - 0.5) * 2.5;     // Flip Y and scale
-            const targetPosZ = -chestZ * 2 - 0.5;         // Depth positioning
+            // Convert to Three.js world coordinates
+            // Adjusted mapping for better positioning
+            const targetPosX = (chestX - 0.5) * 2.5;      // Horizontal position
+            const targetPosY = -(chestY - 0.5) * 2.5;     // Vertical position (flipped)
+            const targetPosZ = -chestZ * 2 - 0.5;         // Depth position
             
-            // Apply position smoothing for stable tracking
+            // Apply smoothing for stable tracking
             smoothedPosX += (targetPosX - smoothedPosX) * POSITION_SMOOTHING;
             smoothedPosY += (targetPosY - smoothedPosY) * POSITION_SMOOTHING;
             smoothedPosZ += (targetPosZ - smoothedPosZ) * POSITION_SMOOTHING;
             
             armorModel.position.set(smoothedPosX, smoothedPosY, smoothedPosZ);
             
-            // ==================== IMPROVED SCALING ====================
-            // Calculate shoulder width (indicator of distance)
+            // ==================== SMART SCALING ====================
+            // Calculate body proportions for distance estimation
             const shoulderWidth = Math.sqrt(
                 Math.pow(rightShoulder.x - leftShoulder.x, 2) +
                 Math.pow(rightShoulder.y - leftShoulder.y, 2)
             );
             
-            // Calculate torso height
             const torsoHeight = Math.sqrt(
                 Math.pow(shoulderCenterX - hipCenterX, 2) +
                 Math.pow(shoulderCenterY - hipCenterY, 2)
             );
             
-            // Use nose Z-depth as primary distance indicator
+            // Use nose depth as distance indicator
             const depthValue = Math.max(0.1, Math.abs(nose.z));
             
-            // Improved scaling calculation
-            const bodyProportionScale = (shoulderWidth * 0.6 + torsoHeight * 0.4) * 6;
-            const depthFactor = Math.max(0.3, Math.min(6, 0.8 / depthValue));
-            const targetScale = bodyProportionScale * depthFactor * 0.25;
+            // Calculate scale based on body size and distance
+            const bodyProportionScale = (shoulderWidth * 0.6 + torsoHeight * 0.4) * 5;
+            const depthFactor = Math.max(0.3, Math.min(5, 0.8 / depthValue));
+            const targetScale = bodyProportionScale * depthFactor * 0.2;
             
-            // Apply minimum and maximum scale limits
+            // Apply scale limits to prevent extreme sizes
             const minScale = 0.15;
-            const maxScale = 1.2;
+            const maxScale = 1.0;
             const clampedTargetScale = Math.max(minScale, Math.min(maxScale, targetScale));
             
-            // Smooth scaling transitions
+            // Smooth scale transitions
             smoothedScale += (clampedTargetScale - smoothedScale) * SCALE_SMOOTHING;
             
             armorModel.scale.set(smoothedScale, smoothedScale, smoothedScale);
             
-            // ==================== CORRECTED ROTATION TRACKING ====================
-            // FIX: Proper rotation calculations for mirrored coordinate system
-            
-            // Shoulder tilt (Z-axis rotation) - adjusted for mirroring
+            // ==================== ROTATION TRACKING ====================
+            // Shoulder tilt (side lean)
             const shoulderTilt = Math.atan2(
                 rightShoulder.y - leftShoulder.y,
                 rightShoulder.x - leftShoulder.x
             );
             
-            // Body rotation (Y-axis) - use depth difference
+            // Body rotation (turning left/right)
             const depthDiff = rightShoulder.z - leftShoulder.z;
             const shoulderSpread = Math.abs(rightShoulder.x - leftShoulder.x);
             
             let rotationY = 0;
             if (shoulderSpread > 0.1) {
-                // FIX: Invert Y rotation for mirrored coordinate system
-                rotationY = -depthDiff * 2;
-                rotationY = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, rotationY));
+                rotationY = depthDiff * 1.5; // Reduced sensitivity
+                rotationY = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, rotationY));
             }
             
-            // Body lean (X-axis)
-            const bodyLean = (shoulderCenterZ - hipCenterZ) * 2;
+            // Body lean (forward/backward)
+            const bodyLean = (shoulderCenterZ - hipCenterZ) * 1.5;
             const clampedLean = Math.max(-Math.PI / 6, Math.min(Math.PI / 6, bodyLean));
             
-            // FIX: Apply corrected rotations
-            // In mirrored space, we need to adjust the rotation directions
+            // Apply rotations - adjusted for mirrored coordinate system
             armorModel.rotation.set(
-                clampedLean,        // X rotation (lean)
-                rotationY,          // Y rotation (body turn) - already inverted
-                -shoulderTilt       // Z rotation (tilt) - inverted for mirror
+                clampedLean,        // X - forward/backward lean
+                rotationY,          // Y - left/right turn  
+                -shoulderTilt       // Z - side tilt (inverted for mirror)
             );
             
             armorModel.visible = true;
             
-            // Show debug info
+            // Update status with tracking info
             statusDiv.textContent = `⚔️ Tracking (Scale: ${smoothedScale.toFixed(2)})`;
             statusDiv.className = "ready";
         }
@@ -397,7 +394,7 @@
                     positionArmorOnBody(results.landmarks[0]);
                 } else {
                     if (armorModel) armorModel.visible = false;
-                    statusDiv.textContent = "No person detected";
+                    statusDiv.textContent = "No person detected - stand in view";
                     statusDiv.className = "loading";
                 }
             } catch (error) {
@@ -440,16 +437,18 @@
                 
                 loadArmorModel();
                 
+                // Start animation and processing
                 animate();
-                setTimeout(() => processPose(), 1500);
+                setTimeout(() => processPose(), 1500); // Small delay to ensure everything is loaded
                 
             } catch (error) {
                 console.error("Init error:", error);
-                statusDiv.textContent = "Failed to start";
+                statusDiv.textContent = "Failed to start application";
                 statusDiv.className = "error";
             }
         }
         
+        // Start the application
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {
