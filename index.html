@@ -247,12 +247,12 @@
                     <div class="adjustment-controls">
                         <button class="adj-btn" onclick="armourTracker.adjustScale(0.1)">Scale +</button>
                         <button class="adj-btn" onclick="armourTracker.adjustScale(-0.1)">Scale -</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustOffsetY(0.1)">Move Up</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustOffsetY(-0.1)">Move Down</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustOffsetX(0.1)">Move Right</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustOffsetX(-0.1)">Move Left</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustDepth(0.5)">Closer</button>
-                        <button class="adj-btn" onclick="armourTracker.adjustDepth(-0.5)">Further</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustOffsetY(0.05)">Move Up</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustOffsetY(-0.05)">Move Down</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustOffsetX(0.05)">Move Right</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustOffsetX(-0.05)">Move Left</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustDepth(0.2)">Closer</button>
+                        <button class="adj-btn" onclick="armourTracker.adjustDepth(-0.2)">Further</button>
                     </div>
                 </div>
             </div>
@@ -263,7 +263,7 @@
                     <h3>🎯 Armour Settings</h3>
                     <div class="metric-row">
                         <span class="metric-label">Scale</span>
-                        <span class="metric-value" id="displayScale">1.2x</span>
+                        <span class="metric-value" id="displayScale">Auto</span>
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Bones Mapped</span>
@@ -273,6 +273,10 @@
                         <span class="metric-label">Rig Type</span>
                         <span class="metric-value" id="displayRigType">Custom</span>
                     </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Body Height</span>
+                        <span class="metric-value" id="displayBodyHeight">--</span>
+                    </div>
                 </div>
 
                 <div class="metric-card">
@@ -280,10 +284,6 @@
                     <div class="metric-row">
                         <span class="metric-label">Posture</span>
                         <span class="metric-value" id="posture">--</span>
-                    </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Body Height</span>
-                        <span class="metric-value" id="bodyHeight">--</span>
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Shoulder Width</span>
@@ -350,6 +350,8 @@
                 this.previousLandmarks = null;
                 this.previousTimestamp = 0;
                 this.smoothedLandmarks = null;
+                this.bodyHeight = 0;
+                this.shoulderWidth = 0;
             }
         }
 
@@ -406,18 +408,20 @@
         // ==================== MODEL SETTINGS ====================
         class ModelSettings {
             constructor() {
-                this.scale = 1.2;
+                this.scale = 1.0;
+                this.autoScale = true;
                 this.offsetX = 0.0;
-                this.offsetY = -0.3;
-                this.depthMultiplier = 3.0;
-                this.coordinateScaleX = 2.0;
-                this.coordinateScaleY = 2.0;
+                this.offsetY = 0.0;
+                this.depthMultiplier = 5.0;
+                this.coordinateScaleX = 3.0;
+                this.coordinateScaleY = 3.0;
                 this.bodyScale = 1.0;
                 this.torsoLength = 1.0;
             }
 
             updateDisplay() {
-                document.getElementById('displayScale').textContent = `${this.scale.toFixed(1)}x`;
+                document.getElementById('displayScale').textContent = this.autoScale ? 'Auto' : `${this.scale.toFixed(1)}x`;
+                document.getElementById('displayBodyHeight').textContent = this.bodyScale > 0 ? `${(this.bodyScale * 100).toFixed(1)}%` : '--';
             }
         }
 
@@ -443,7 +447,7 @@
                     fps: document.getElementById('fpsCounter'),
                     modelStatus: document.getElementById('modelStatus'),
                     posture: document.getElementById('posture'),
-                    bodyHeight: document.getElementById('bodyHeight'),
+                    bodyHeight: document.getElementById('shoulderWidth'),
                     shoulderWidth: document.getElementById('shoulderWidth'),
                     movementSpeed: document.getElementById('movementSpeed'),
                     bones: document.getElementById('displayBones'),
@@ -533,6 +537,7 @@
                 this.skeleton = null;
                 this.boneMapper = new BoneMapper();
                 this.modelLoaded = false;
+                this.baseScale = 1.0;
                 
                 this.initialize();
             }
@@ -578,7 +583,10 @@
                     (gltf) => {
                         this.model = gltf.scene;
                         this.scene.add(this.model);
-                        this.model.scale.set(this.settings.scale, this.settings.scale, this.settings.scale);
+                        
+                        // Store the base scale for reference
+                        this.baseScale = 1.0;
+                        this.model.scale.set(this.baseScale, this.baseScale, this.baseScale);
                         this.model.position.set(0, 0, 0);
                         this.model.visible = false;
                         
@@ -647,9 +655,28 @@
                 return visibleCount >= 3;
             }
 
+            calculateBodyScale(landmarks) {
+                if (!landmarks[0] || !landmarks[23] || !landmarks[24] || !landmarks[25] || !landmarks[26]) {
+                    return 1.0;
+                }
+
+                // Calculate body height (nose to feet)
+                const leftHeight = Math.abs(landmarks[0].y - landmarks[27].y);
+                const rightHeight = Math.abs(landmarks[0].y - landmarks[28].y);
+                const bodyHeight = (leftHeight + rightHeight) / 2;
+
+                // Calculate shoulder width
+                const shoulderWidth = Math.abs(landmarks[11].x - landmarks[12].x);
+
+                // Combine metrics for overall scale
+                const scale = (bodyHeight + shoulderWidth * 0.5) * 2.5;
+                
+                return Math.max(0.5, Math.min(2.0, scale));
+            }
+
             calculateBoneRotation(fromLandmark, toLandmark) {
-                const from = new THREE.Vector3(fromLandmark.x, -fromLandmark.y, fromLandmark.z);
-                const to = new THREE.Vector3(toLandmark.x, -toLandmark.y, toLandmark.z);
+                const from = new THREE.Vector3(fromLandmark.x, -fromLandmark.y, fromLandmark.z || 0);
+                const to = new THREE.Vector3(toLandmark.x, -toLandmark.y, toLandmark.z || 0);
                 
                 const direction = new THREE.Vector3().subVectors(to, from).normalize();
                 const quaternion = new THREE.Quaternion();
@@ -665,9 +692,8 @@
                 if (!this.skeleton || !landmarks) return;
 
                 try {
-                    // Animate spine
+                    // Animate spine chain
                     if (this.boneMapper.hasBone('hips') && landmarks[23] && landmarks[24]) {
-                        const hipBone = this.boneMapper.getBone('hips');
                         const hipCenter = {
                             x: (landmarks[23].x + landmarks[24].x) / 2,
                             y: (landmarks[23].y + landmarks[24].y) / 2,
@@ -679,64 +705,87 @@
                             z: (landmarks[11].z + landmarks[12].z) / 2
                         };
                         
-                        const rotation = this.calculateBoneRotation(hipCenter, shoulderCenter);
-                        hipBone.quaternion.copy(rotation);
+                        // Hips
+                        const hipsBone = this.boneMapper.getBone('hips');
+                        if (hipsBone) {
+                            const rotation = this.calculateBoneRotation(hipCenter, shoulderCenter);
+                            hipsBone.quaternion.copy(rotation);
+                        }
+
+                        // Spine
+                        const spineBone = this.boneMapper.getBone('spine');
+                        if (spineBone) {
+                            const rotation = this.calculateBoneRotation(hipCenter, shoulderCenter);
+                            spineBone.quaternion.copy(rotation);
+                        }
                     }
 
-                    // Animate left upper arm
-                    if (this.boneMapper.hasBone('leftUpperArm') && landmarks[11] && landmarks[13]) {
-                        const bone = this.boneMapper.getBone('leftUpperArm');
-                        const rotation = this.calculateBoneRotation(landmarks[11], landmarks[13]);
-                        bone.quaternion.copy(rotation);
+                    // Left arm chain
+                    if (landmarks[11] && landmarks[13] && landmarks[15]) {
+                        // Upper arm
+                        const leftUpperArm = this.boneMapper.getBone('leftUpperArm');
+                        if (leftUpperArm) {
+                            const rotation = this.calculateBoneRotation(landmarks[11], landmarks[13]);
+                            leftUpperArm.quaternion.copy(rotation);
+                        }
+
+                        // Forearm
+                        const leftForearm = this.boneMapper.getBone('leftForearm');
+                        if (leftForearm) {
+                            const rotation = this.calculateBoneRotation(landmarks[13], landmarks[15]);
+                            leftForearm.quaternion.copy(rotation);
+                        }
                     }
 
-                    // Animate left forearm
-                    if (this.boneMapper.hasBone('leftForearm') && landmarks[13] && landmarks[15]) {
-                        const bone = this.boneMapper.getBone('leftForearm');
-                        const rotation = this.calculateBoneRotation(landmarks[13], landmarks[15]);
-                        bone.quaternion.copy(rotation);
+                    // Right arm chain
+                    if (landmarks[12] && landmarks[14] && landmarks[16]) {
+                        // Upper arm
+                        const rightUpperArm = this.boneMapper.getBone('rightUpperArm');
+                        if (rightUpperArm) {
+                            const rotation = this.calculateBoneRotation(landmarks[12], landmarks[14]);
+                            rightUpperArm.quaternion.copy(rotation);
+                        }
+
+                        // Forearm
+                        const rightForearm = this.boneMapper.getBone('rightForearm');
+                        if (rightForearm) {
+                            const rotation = this.calculateBoneRotation(landmarks[14], landmarks[16]);
+                            rightForearm.quaternion.copy(rotation);
+                        }
                     }
 
-                    // Animate right upper arm
-                    if (this.boneMapper.hasBone('rightUpperArm') && landmarks[12] && landmarks[14]) {
-                        const bone = this.boneMapper.getBone('rightUpperArm');
-                        const rotation = this.calculateBoneRotation(landmarks[12], landmarks[14]);
-                        bone.quaternion.copy(rotation);
+                    // Left leg chain
+                    if (landmarks[23] && landmarks[25] && landmarks[27]) {
+                        // Upper leg
+                        const leftUpLeg = this.boneMapper.getBone('leftUpLeg');
+                        if (leftUpLeg) {
+                            const rotation = this.calculateBoneRotation(landmarks[23], landmarks[25]);
+                            leftUpLeg.quaternion.copy(rotation);
+                        }
+
+                        // Leg
+                        const leftLeg = this.boneMapper.getBone('leftLeg');
+                        if (leftLeg) {
+                            const rotation = this.calculateBoneRotation(landmarks[25], landmarks[27]);
+                            leftLeg.quaternion.copy(rotation);
+                        }
                     }
 
-                    // Animate right forearm
-                    if (this.boneMapper.hasBone('rightForearm') && landmarks[14] && landmarks[16]) {
-                        const bone = this.boneMapper.getBone('rightForearm');
-                        const rotation = this.calculateBoneRotation(landmarks[14], landmarks[16]);
-                        bone.quaternion.copy(rotation);
-                    }
+                    // Right leg chain
+                    if (landmarks[24] && landmarks[26] && landmarks[28]) {
+                        // Upper leg
+                        const rightUpLeg = this.boneMapper.getBone('rightUpLeg');
+                        if (rightUpLeg) {
+                            const rotation = this.calculateBoneRotation(landmarks[24], landmarks[26]);
+                            rightUpLeg.quaternion.copy(rotation);
+                        }
 
-                    // Animate left thigh
-                    if (this.boneMapper.hasBone('leftUpLeg') && landmarks[23] && landmarks[25]) {
-                        const bone = this.boneMapper.getBone('leftUpLeg');
-                        const rotation = this.calculateBoneRotation(landmarks[23], landmarks[25]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                    // Animate left shin
-                    if (this.boneMapper.hasBone('leftLeg') && landmarks[25] && landmarks[27]) {
-                        const bone = this.boneMapper.getBone('leftLeg');
-                        const rotation = this.calculateBoneRotation(landmarks[25], landmarks[27]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                    // Animate right thigh
-                    if (this.boneMapper.hasBone('rightUpLeg') && landmarks[24] && landmarks[26]) {
-                        const bone = this.boneMapper.getBone('rightUpLeg');
-                        const rotation = this.calculateBoneRotation(landmarks[24], landmarks[26]);
-                        bone.quaternion.copy(rotation);
-                    }
-
-                    // Animate right shin
-                    if (this.boneMapper.hasBone('rightLeg') && landmarks[26] && landmarks[28]) {
-                        const bone = this.boneMapper.getBone('rightLeg');
-                        const rotation = this.calculateBoneRotation(landmarks[26], landmarks[28]);
-                        bone.quaternion.copy(rotation);
+                        // Leg
+                        const rightLeg = this.boneMapper.getBone('rightLeg');
+                        if (rightLeg) {
+                            const rotation = this.calculateBoneRotation(landmarks[26], landmarks[28]);
+                            rightLeg.quaternion.copy(rotation);
+                        }
                     }
 
                 } catch (error) {
@@ -757,7 +806,23 @@
                     
                     this.model.visible = true;
 
-                    // Calculate torso center for positioning
+                    // Calculate automatic scale based on body size
+                    if (this.settings.autoScale) {
+                        this.settings.bodyScale = this.calculateBodyScale(landmarks);
+                        this.model.scale.set(
+                            this.baseScale * this.settings.bodyScale,
+                            this.baseScale * this.settings.bodyScale,
+                            this.baseScale * this.settings.bodyScale
+                        );
+                    } else {
+                        this.model.scale.set(
+                            this.baseScale * this.settings.scale,
+                            this.baseScale * this.settings.scale,
+                            this.baseScale * this.settings.scale
+                        );
+                    }
+
+                    // Calculate body center for positioning
                     const shoulders = [11, 12];
                     const hips = [23, 24];
                     
@@ -797,7 +862,9 @@
                     const centerY = (shoulderY + hipY) / 2;
                     const centerZ = (shoulderZ + hipZ) / 2;
                     
-                    // Position the model
+                    // Position the model - FIXED COORDINATE SYSTEM
+                    // MediaPipe coordinates: (0,0) top-left, (1,1) bottom-right
+                    // Three.js coordinates: center is (0,0), y-up
                     const posX = (centerX - 0.5) * this.settings.coordinateScaleX + this.settings.offsetX;
                     const posY = -(centerY - 0.5) * this.settings.coordinateScaleY + this.settings.offsetY;
                     const posZ = -centerZ * this.settings.depthMultiplier;
@@ -944,18 +1011,22 @@
             }
 
             calculateMetrics(landmarks) {
+                // Calculate body height
                 if (landmarks[0] && landmarks[27] && landmarks[28]) {
                     const leftHeight = this.calculateDistance(landmarks[0], landmarks[27]);
                     const rightHeight = this.calculateDistance(landmarks[0], landmarks[28]);
                     const avgHeight = ((leftHeight + rightHeight) / 2).toFixed(3);
-                    this.domManager.displays.bodyHeight.textContent = `${avgHeight} u`;
+                    this.appState.bodyHeight = avgHeight;
                 }
 
+                // Calculate shoulder width
                 if (landmarks[11] && landmarks[12]) {
                     const shoulderWidth = this.calculateDistance(landmarks[11], landmarks[12]);
+                    this.appState.shoulderWidth = shoulderWidth.toFixed(3);
                     this.domManager.displays.shoulderWidth.textContent = `${shoulderWidth.toFixed(3)} u`;
                 }
 
+                // Calculate movement speed
                 const currentTimestamp = Date.now();
                 const timeDelta = currentTimestamp - this.appState.previousTimestamp;
 
@@ -967,6 +1038,7 @@
                 this.appState.previousLandmarks = JSON.parse(JSON.stringify(landmarks));
                 this.appState.previousTimestamp = currentTimestamp;
 
+                // Determine posture
                 const posture = this.determinePosture(landmarks);
                 this.domManager.displays.posture.textContent = posture;
                 this.domManager.displays.landmarkCount.textContent = landmarks.length;
@@ -1173,6 +1245,7 @@
             }
 
             adjustScale(delta) {
+                this.modelSettings.autoScale = false;
                 this.modelSettings.scale = Math.max(0.1, this.modelSettings.scale + delta);
                 if (this.threeJSRenderer.model) {
                     this.threeJSRenderer.model.scale.set(
@@ -1212,5 +1285,3 @@
     </script>
 </body>
 </html>
-
-
