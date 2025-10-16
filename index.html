@@ -68,8 +68,7 @@
         <div id="status" class="loading">Initializing...</div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"></script>
-    
+    <!-- Three.js FIRST -->
     <script type="importmap">
     {
         "imports": {
@@ -78,6 +77,9 @@
         }
     }
     </script>
+    
+    <!-- MediaPipe CDN - Fixed order -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js" crossorigin="anonymous"></script>
     
     <script type="module">
         import * as THREE from 'three';
@@ -97,14 +99,49 @@
         let lastVideoTime = -1;
         let isModelLoaded = false;
         
-        // ==================== MEDIAPIPE INITIALIZATION ====================
+        // ==================== CAMERA SETUP ====================
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: "user"
+                    },
+                    audio: false
+                });
+                
+                video.srcObject = stream;
+                
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        console.log("✓ Camera ready");
+                        resolve(true);
+                    };
+                });
+            } catch (error) {
+                console.error("Camera error:", error);
+                statusDiv.textContent = "Camera access denied";
+                statusDiv.className = "error";
+                return false;
+            }
+        }
+        
+        // ==================== MEDIAPIPE INITIALIZATION (FIXED) ====================
         async function initPoseDetection() {
             try {
-                const vision = await window.FilesetResolver.forVisionTasks(
-                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+                // Wait for MediaPipe to load
+                if (typeof FilesetResolver === 'undefined') {
+                    console.log("Waiting for MediaPipe to load...");
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+                
+                const vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
                 );
                 
-                poseLandmarker = await window.PoseLandmarker.createFromOptions(vision, {
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
                     baseOptions: {
                         modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
                         delegate: "GPU"
@@ -120,7 +157,7 @@
                 return true;
             } catch (error) {
                 console.error("Pose detection error:", error);
-                statusDiv.textContent = "Pose detection failed";
+                statusDiv.textContent = "Pose detection failed: " + error.message;
                 statusDiv.className = "error";
                 return false;
             }
@@ -199,39 +236,10 @@
                 },
                 (error) => {
                     console.error("Model load error:", error);
-                    statusDiv.textContent = "Model load failed";
+                    statusDiv.textContent = "Model load failed - check path";
                     statusDiv.className = "error";
                 }
             );
-        }
-        
-        // ==================== CAMERA SETUP ====================
-        async function initCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        facingMode: "user"
-                    },
-                    audio: false
-                });
-                
-                video.srcObject = stream;
-                
-                return new Promise((resolve) => {
-                    video.onloadedmetadata = () => {
-                        video.play();
-                        console.log("✓ Camera ready");
-                        resolve(true);
-                    };
-                });
-            } catch (error) {
-                console.error("Camera error:", error);
-                statusDiv.textContent = "Camera access denied";
-                statusDiv.className = "error";
-                return false;
-            }
         }
         
         // ==================== AUTOMATIC ARMOR POSITIONING ====================
@@ -252,7 +260,7 @@
                 leftHip.visibility < minVisibility || 
                 rightHip.visibility < minVisibility) {
                 armorModel.visible = false;
-                statusDiv.textContent = "Move into view - torso needed";
+                statusDiv.textContent = "Move into view - show torso";
                 statusDiv.className = "loading";
                 return;
             }
@@ -267,7 +275,7 @@
             const hipCenterY = (leftHip.y + rightHip.y) / 2;
             const hipCenterZ = (leftHip.z + rightHip.z) / 2;
             
-            // Chest center point (where armor anchors)
+            // Chest center point (60% shoulders, 40% hips)
             const chestX = shoulderCenterX * 0.6 + hipCenterX * 0.4;
             const chestY = shoulderCenterY * 0.6 + hipCenterY * 0.4;
             const chestZ = shoulderCenterZ * 0.6 + hipCenterZ * 0.4;
@@ -275,52 +283,43 @@
             // Convert to Three.js coordinates
             const posX = -(chestX * 2 - 1) * 2;
             const posY = -(chestY * 2 - 1) * 2;
-            const posZ = -chestZ * 4 - 0.2; // Slightly forward from body
+            const posZ = -chestZ * 4 - 0.2;
             
             armorModel.position.set(posX, posY, posZ);
             
-            // AUTOMATIC SCALING based on body measurements
-            // Use shoulder width as primary reference
+            // AUTOMATIC SCALING
             const shoulderWidth = Math.sqrt(
                 Math.pow(rightShoulder.x - leftShoulder.x, 2) +
                 Math.pow(rightShoulder.y - leftShoulder.y, 2) +
                 Math.pow(rightShoulder.z - leftShoulder.z, 2)
             );
             
-            // Use torso length as secondary reference
             const torsoLength = Math.sqrt(
                 Math.pow(shoulderCenterX - hipCenterX, 2) +
                 Math.pow(shoulderCenterY - hipCenterY, 2) +
                 Math.pow(shoulderCenterZ - hipCenterZ, 2)
             );
             
-            // Calculate body size (distance from camera)
             const bodyDepth = Math.abs(nose.z);
             const depthFactor = Math.max(0.5, Math.min(2.0, 1 / bodyDepth));
             
-            // Automatic scale calculation
             const baseScale = shoulderWidth * 4.5;
             const torsoAdjustment = torsoLength * 1.2;
             const finalScale = (baseScale + torsoAdjustment) / 2 * depthFactor;
             
             armorModel.scale.set(finalScale, finalScale, finalScale);
             
-            // AUTOMATIC ROTATION tracking
-            // Match shoulder rotation
+            // AUTOMATIC ROTATION
             const shoulderAngle = Math.atan2(
                 rightShoulder.y - leftShoulder.y,
                 rightShoulder.x - leftShoulder.x
             );
             armorModel.rotation.z = -shoulderAngle;
             
-            // Match body tilt (lean forward/backward)
             const tiltAngle = (shoulderCenterZ - hipCenterZ) * 2;
             armorModel.rotation.x = tiltAngle;
             
-            // Match body twist (rotation left/right)
-            const leftShoulderDepth = leftShoulder.z;
-            const rightShoulderDepth = rightShoulder.z;
-            const twistAngle = (rightShoulderDepth - leftShoulderDepth) * 2;
+            const twistAngle = (rightShoulder.z - leftShoulder.z) * 2;
             armorModel.rotation.y = twistAngle;
             
             armorModel.visible = true;
@@ -357,14 +356,18 @@
         // ==================== RENDER LOOP ====================
         function animate() {
             requestAnimationFrame(animate);
-            renderer.render(scene, camera);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
         }
         
-        // ==================== WINDOW RESIZE ====================
+        // ==================== WINDOW RESIZE (FIXED) ====================
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
         });
         
         // ==================== INITIALIZATION ====================
@@ -374,26 +377,31 @@
                 const cameraOk = await initCamera();
                 if (!cameraOk) return;
                 
+                statusDiv.textContent = "Initializing 3D...";
+                initThreeJS();
+                
                 statusDiv.textContent = "Loading pose detection...";
                 const poseOk = await initPoseDetection();
                 if (!poseOk) return;
                 
-                statusDiv.textContent = "Initializing 3D...";
-                initThreeJS();
-                
                 loadArmorModel();
                 
                 animate();
-                setTimeout(() => processPose(), 1000);
+                setTimeout(() => processPose(), 1500);
                 
             } catch (error) {
                 console.error("Init error:", error);
-                statusDiv.textContent = "Failed to start";
+                statusDiv.textContent = "Failed to start: " + error.message;
                 statusDiv.className = "error";
             }
         }
         
-        init();
+        // Wait for page load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
     </script>
 </body>
 </html>
