@@ -68,7 +68,6 @@
         <div id="status" class="loading">Initializing...</div>
     </div>
 
-    <!-- Three.js -->
     <script type="importmap">
     {
         "imports": {
@@ -78,7 +77,6 @@
     }
     </script>
     
-    <!-- CORRECT MediaPipe CDN -->
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -127,7 +125,7 @@
             }
         }
         
-        // ==================== MEDIAPIPE INITIALIZATION (FIXED) ====================
+        // ==================== MEDIAPIPE INITIALIZATION ====================
         async function initPoseDetection() {
             try {
                 const vision = await FilesetResolver.forVisionTasks(
@@ -150,7 +148,7 @@
                 return true;
             } catch (error) {
                 console.error("Pose detection error:", error);
-                statusDiv.textContent = "Pose detection failed: " + error.message;
+                statusDiv.textContent = "Pose detection failed";
                 statusDiv.className = "error";
                 return false;
             }
@@ -192,7 +190,7 @@
             console.log("✓ Three.js ready");
         }
         
-        // ==================== LOAD ARMOR MODEL ====================
+        // ==================== LOAD ARMOR MODEL (FIXED ORIENTATION) ====================
         function loadArmorModel() {
             const loader = new GLTFLoader();
             
@@ -202,15 +200,24 @@
             loader.load(
                 MODEL_PATH,
                 (gltf) => {
-                    armorModel = gltf.scene;
+                    const loadedModel = gltf.scene;
                     
-                    // Center the model's pivot point
-                    const box = new THREE.Box3().setFromObject(armorModel);
+                    // Center the model
+                    const box = new THREE.Box3().setFromObject(loadedModel);
                     const center = box.getCenter(new THREE.Vector3());
-                    armorModel.position.sub(center);
+                    loadedModel.position.sub(center);
                     
+                    // Create group for the model
                     const modelGroup = new THREE.Group();
-                    modelGroup.add(armorModel);
+                    modelGroup.add(loadedModel);
+                    
+                    // FIX ORIENTATION: Rotate model to correct upside-down issue
+                    // If model is upside down, rotate 180° on X-axis
+                    modelGroup.rotation.x = Math.PI; // 180 degrees
+                    
+                    // FIX MIRRORING: Scale X negative to flip horizontally
+                    modelGroup.scale.set(-1, 1, 1);
+                    
                     scene.add(modelGroup);
                     armorModel = modelGroup;
                     
@@ -229,91 +236,105 @@
                 },
                 (error) => {
                     console.error("Model load error:", error);
-                    statusDiv.textContent = "Model load failed - check path";
+                    statusDiv.textContent = "Model load failed";
                     statusDiv.className = "error";
                 }
             );
         }
         
-        // ==================== AUTOMATIC ARMOR POSITIONING ====================
+        // ==================== AUTOMATIC ARMOR POSITIONING (FIXED COORDINATES) ====================
         function positionArmorOnBody(landmarks) {
             if (!armorModel || !isModelLoaded) return;
             
-            // Key landmarks for chest plate
+            // Key landmarks
             const leftShoulder = landmarks[11];
             const rightShoulder = landmarks[12];
             const leftHip = landmarks[23];
             const rightHip = landmarks[24];
             const nose = landmarks[0];
             
-            // Check if body is visible enough
+            // Visibility check
             const minVisibility = 0.5;
             if (leftShoulder.visibility < minVisibility || 
                 rightShoulder.visibility < minVisibility ||
                 leftHip.visibility < minVisibility || 
                 rightHip.visibility < minVisibility) {
                 armorModel.visible = false;
-                statusDiv.textContent = "Move into view - show torso";
+                statusDiv.textContent = "Show your torso";
                 statusDiv.className = "loading";
                 return;
             }
             
-            // Calculate shoulder center
+            // Calculate centers
             const shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2;
             const shoulderCenterY = (leftShoulder.y + rightShoulder.y) / 2;
             const shoulderCenterZ = (leftShoulder.z + rightShoulder.z) / 2;
             
-            // Calculate hip center
             const hipCenterX = (leftHip.x + rightHip.x) / 2;
             const hipCenterY = (leftHip.y + rightHip.y) / 2;
             const hipCenterZ = (leftHip.z + rightHip.z) / 2;
             
-            // Chest center point (60% shoulders, 40% hips)
-            const chestX = shoulderCenterX * 0.6 + hipCenterX * 0.4;
-            const chestY = shoulderCenterY * 0.6 + hipCenterY * 0.4;
-            const chestZ = shoulderCenterZ * 0.6 + hipCenterZ * 0.4;
+            // Chest anchor point (slightly below shoulders)
+            const chestX = shoulderCenterX * 0.65 + hipCenterX * 0.35;
+            const chestY = shoulderCenterY * 0.65 + hipCenterY * 0.35;
+            const chestZ = shoulderCenterZ * 0.65 + hipCenterZ * 0.35;
             
-            // Convert to Three.js coordinates
-            const posX = -(chestX * 2 - 1) * 2;
-            const posY = -(chestY * 2 - 1) * 2;
-            const posZ = -chestZ * 4 - 0.2;
+            // FIXED COORDINATE CONVERSION
+            // MediaPipe: X(0-1 left-right), Y(0-1 top-bottom), Z(depth)
+            // Three.js: X(-2 to 2 left-right), Y(-2 to 2 bottom-top), Z(depth)
+            
+            const posX = (chestX - 0.5) * 4;  // Center at 0, scale to -2 to 2
+            const posY = -(chestY - 0.5) * 4;  // Flip Y and center
+            const posZ = -chestZ * 4;  // Move forward from camera
             
             armorModel.position.set(posX, posY, posZ);
             
             // AUTOMATIC SCALING
             const shoulderWidth = Math.sqrt(
                 Math.pow(rightShoulder.x - leftShoulder.x, 2) +
-                Math.pow(rightShoulder.y - leftShoulder.y, 2) +
-                Math.pow(rightShoulder.z - leftShoulder.z, 2)
+                Math.pow(rightShoulder.y - leftShoulder.y, 2)
             );
             
             const torsoLength = Math.sqrt(
                 Math.pow(shoulderCenterX - hipCenterX, 2) +
-                Math.pow(shoulderCenterY - hipCenterY, 2) +
-                Math.pow(shoulderCenterZ - hipCenterZ, 2)
+                Math.pow(shoulderCenterY - hipCenterY, 2)
             );
             
+            // Distance-based scaling
             const bodyDepth = Math.abs(nose.z);
-            const depthFactor = Math.max(0.5, Math.min(2.0, 1 / bodyDepth));
+            const depthFactor = 1 / Math.max(0.3, Math.min(1.5, bodyDepth));
             
-            const baseScale = shoulderWidth * 4.5;
-            const torsoAdjustment = torsoLength * 1.2;
-            const finalScale = (baseScale + torsoAdjustment) / 2 * depthFactor;
+            // Calculate final scale
+            const baseScale = shoulderWidth * 5.5;
+            const torsoScale = torsoLength * 2.0;
+            const finalScale = ((baseScale + torsoScale) / 2) * depthFactor;
             
-            armorModel.scale.set(finalScale, finalScale, finalScale);
+            // Apply scale (remember we already flipped X in the model group)
+            const scaleX = finalScale;
+            const scaleY = finalScale;
+            const scaleZ = finalScale;
+            armorModel.scale.set(scaleX, scaleY, scaleZ);
             
-            // AUTOMATIC ROTATION
+            // ROTATION TRACKING (FIXED AXES)
+            // Z-axis: Shoulder tilt (left shoulder up/down vs right)
             const shoulderAngle = Math.atan2(
                 rightShoulder.y - leftShoulder.y,
                 rightShoulder.x - leftShoulder.x
             );
-            armorModel.rotation.z = -shoulderAngle;
             
-            const tiltAngle = (shoulderCenterZ - hipCenterZ) * 2;
-            armorModel.rotation.x = tiltAngle;
+            // Y-axis: Body rotation (turning left/right)
+            const shoulderDepthDiff = rightShoulder.z - leftShoulder.z;
+            const rotationY = shoulderDepthDiff * 3;
             
-            const twistAngle = (rightShoulder.z - leftShoulder.z) * 2;
-            armorModel.rotation.y = twistAngle;
+            // X-axis: Body lean (forward/backward)
+            const bodyLean = (shoulderCenterZ - hipCenterZ) * 3;
+            
+            // Apply rotations with base orientation correction
+            armorModel.rotation.set(
+                Math.PI + bodyLean,  // X: Keep base flip + add lean
+                rotationY,           // Y: Body twist
+                shoulderAngle        // Z: Shoulder tilt
+            );
             
             armorModel.visible = true;
             statusDiv.textContent = "⚔️ Armor Active";
@@ -384,12 +405,11 @@
                 
             } catch (error) {
                 console.error("Init error:", error);
-                statusDiv.textContent = "Failed to start: " + error.message;
+                statusDiv.textContent = "Failed to start";
                 statusDiv.className = "error";
             }
         }
         
-        // Wait for page load
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {
