@@ -98,7 +98,11 @@
         
         // Smoothing
         let smoothedScale = 1.0;
-        const SCALE_SMOOTHING = 0.15;
+        let smoothedPosX = 0;
+        let smoothedPosY = 0;
+        let smoothedPosZ = 0;
+        const POSITION_SMOOTHING = 0.3;
+        const SCALE_SMOOTHING = 0.2;
         
         // ==================== CAMERA SETUP ====================
         async function initCamera() {
@@ -145,8 +149,7 @@
                     numPoses: 1,
                     minPoseDetectionConfidence: 0.5,
                     minPosePresenceConfidence: 0.5,
-                    minTrackingConfidence: 0.5,
-                    outputSegmentationMasks: false
+                    minTrackingConfidence: 0.5
                 });
                 
                 console.log("✓ Pose detection ready");
@@ -163,6 +166,7 @@
         function initThreeJS() {
             scene = new THREE.Scene();
             
+            // Camera setup to match video perspective
             camera = new THREE.PerspectiveCamera(
                 63,
                 window.innerWidth / window.innerHeight,
@@ -170,6 +174,7 @@
                 1000
             );
             camera.position.set(0, 0, 2);
+            camera.lookAt(0, 0, 0);
             
             renderer = new THREE.WebGLRenderer({ 
                 canvas: canvas,
@@ -212,7 +217,7 @@
                     const center = box.getCenter(new THREE.Vector3());
                     loadedModel.position.sub(center);
                     
-                    // Fix base rotation (model facing forward)
+                    // Fix base rotation
                     loadedModel.rotation.y = Math.PI;
                     
                     // Create parent group
@@ -243,22 +248,16 @@
             );
         }
         
-        // ==================== REAL-WORLD COORDINATE CONVERSION ====================
-        function positionArmorOnBody(landmarks, worldLandmarks) {
+        // ==================== IMPROVED TRACKING WITH AUTOSCALE ====================
+        function positionArmorOnBody(landmarks) {
             if (!armorModel || !isModelLoaded) return;
             
-            // Key landmarks (use world coordinates for accurate tracking)
+            // Key landmarks
             const leftShoulder = landmarks[11];
             const rightShoulder = landmarks[12];
             const leftHip = landmarks[23];
             const rightHip = landmarks[24];
             const nose = landmarks[0];
-            
-            // World landmarks (in meters, real-world 3D coordinates)
-            const leftShoulderWorld = worldLandmarks[11];
-            const rightShoulderWorld = worldLandmarks[12];
-            const leftHipWorld = worldLandmarks[23];
-            const rightHipWorld = worldLandmarks[24];
             
             // Visibility check
             const minVisibility = 0.5;
@@ -272,95 +271,105 @@
                 return;
             }
             
-            // ==================== USE WORLD COORDINATES ====================
-            // MediaPipe world landmarks are in meters relative to hip center
-            // X: left(-) to right(+)
-            // Y: down(-) to up(+)
-            // Z: back(-) to front(+)
+            // ==================== POSITION TRACKING ====================
+            // Calculate chest center in normalized coordinates (0-1)
+            const shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2;
+            const shoulderCenterY = (leftShoulder.y + rightShoulder.y) / 2;
+            const shoulderCenterZ = (leftShoulder.z + rightShoulder.z) / 2;
             
-            // Calculate chest center in world space
-            const chestWorldX = (leftShoulderWorld.x + rightShoulderWorld.x) / 2 * 0.65 +
-                                (leftHipWorld.x + rightHipWorld.x) / 2 * 0.35;
-            const chestWorldY = (leftShoulderWorld.y + rightShoulderWorld.y) / 2 * 0.65 +
-                                (leftHipWorld.y + rightHipWorld.y) / 2 * 0.35;
-            const chestWorldZ = (leftShoulderWorld.z + rightShoulderWorld.z) / 2 * 0.65 +
-                                (leftHipWorld.z + rightHipWorld.z) / 2 * 0.35;
+            const hipCenterX = (leftHip.x + rightHip.x) / 2;
+            const hipCenterY = (leftHip.y + rightHip.y) / 2;
+            const hipCenterZ = (leftHip.z + rightHip.z) / 2;
             
-            // ==================== CONVERT TO THREE.JS SPACE ====================
-            // MediaPipe world space to Three.js:
-            // X: flip (MediaPipe right+ → Three.js left-)
-            // Y: keep same (up is positive)
-            // Z: flip and offset (MediaPipe front+ → Three.js back-)
+            // Chest anchor (weighted toward shoulders)
+            const chestX = shoulderCenterX * 0.7 + hipCenterX * 0.3;
+            const chestY = shoulderCenterY * 0.7 + hipCenterY * 0.3;
+            const chestZ = shoulderCenterZ * 0.7 + hipCenterZ * 0.3;
             
-            const posX = -chestWorldX * 2;  // Flip X and scale
-            const posY = chestWorldY * 2;   // Keep Y direction, scale
-            const posZ = -chestWorldZ * 2 - 1;  // Flip Z, scale, and offset toward camera
+            // Convert to Three.js coordinates
+            // X: 0-1 normalized → -2 to +2 world space
+            // Y: 0-1 normalized → +2 to -2 world space (flipped)
+            // Z: depth value → negative (into screen)
+            const targetPosX = (chestX - 0.5) * 4;      // Center and scale
+            const targetPosY = -(chestY - 0.5) * 4;     // Flip Y and scale
+            const targetPosZ = -chestZ * 5 - 1;         // Depth positioning
             
-            armorModel.position.set(posX, posY, posZ);
+            // Apply position smoothing for stable tracking
+            smoothedPosX += (targetPosX - smoothedPosX) * POSITION_SMOOTHING;
+            smoothedPosY += (targetPosY - smoothedPosY) * POSITION_SMOOTHING;
+            smoothedPosZ += (targetPosZ - smoothedPosZ) * POSITION_SMOOTHING;
             
-            // ==================== REAL-WORLD SCALE CALCULATION ====================
+            armorModel.position.set(smoothedPosX, smoothedPosY, smoothedPosZ);
             
-            // Calculate shoulder width in world space (meters)
-            const shoulderWidthWorld = Math.sqrt(
-                Math.pow(rightShoulderWorld.x - leftShoulderWorld.x, 2) +
-                Math.pow(rightShoulderWorld.y - leftShoulderWorld.y, 2) +
-                Math.pow(rightShoulderWorld.z - leftShoulderWorld.z, 2)
+            // ==================== AUTO SCALE BASED ON DISTANCE ====================
+            
+            // Calculate shoulder width (indicator of distance)
+            const shoulderWidth = Math.sqrt(
+                Math.pow(rightShoulder.x - leftShoulder.x, 2) +
+                Math.pow(rightShoulder.y - leftShoulder.y, 2)
             );
             
-            // Calculate torso length in world space (meters)
-            const shoulderMidWorldY = (leftShoulderWorld.y + rightShoulderWorld.y) / 2;
-            const hipMidWorldY = (leftHipWorld.y + rightHipWorld.y) / 2;
-            const torsoLengthWorld = Math.abs(shoulderMidWorldY - hipMidWorldY);
-            
-            // Average real-world body size
-            const bodySize = (shoulderWidthWorld * 0.6 + torsoLengthWorld * 0.4);
-            
-            // Calculate distance from camera using normalized Z
-            const avgZ = Math.abs(
-                (leftShoulder.z + rightShoulder.z + leftHip.z + rightHip.z) / 4
+            // Calculate torso height
+            const torsoHeight = Math.sqrt(
+                Math.pow(shoulderCenterX - hipCenterX, 2) +
+                Math.pow(shoulderCenterY - hipCenterY, 2)
             );
             
-            // Perspective correction
-            const distanceFactor = 1 / Math.max(0.2, Math.min(2.0, avgZ));
+            // Use nose Z-depth as primary distance indicator
+            const depthValue = Math.abs(nose.z);
             
-            // Final scale based on actual body measurements
-            const targetScale = bodySize * 2.5 * distanceFactor;
+            // When far: large Z, small shoulder width → need bigger scale
+            // When close: small Z, large shoulder width → need smaller scale
             
-            // Smooth scaling
+            // Calculate base scale from body proportions on screen
+            const bodyProportionScale = (shoulderWidth * 0.6 + torsoHeight * 0.4) * 10;
+            
+            // Depth compensation factor
+            // Close (Z≈0.1) → factor≈1.0
+            // Far (Z≈1.0) → factor≈10
+            const depthFactor = Math.max(0.5, Math.min(15, 1 / depthValue));
+            
+            // Combine factors
+            const targetScale = bodyProportionScale * depthFactor * 0.5;
+            
+            // Smooth scaling transitions
             smoothedScale += (targetScale - smoothedScale) * SCALE_SMOOTHING;
+            
             armorModel.scale.set(smoothedScale, smoothedScale, smoothedScale);
             
-            // ==================== ROTATION FROM WORLD COORDINATES ====================
+            // ==================== ROTATION TRACKING ====================
             
-            // Calculate shoulder vector in world space
-            const shoulderVectorX = rightShoulderWorld.x - leftShoulderWorld.x;
-            const shoulderVectorY = rightShoulderWorld.y - leftShoulderWorld.y;
-            const shoulderVectorZ = rightShoulderWorld.z - leftShoulderWorld.z;
-            
-            // Z-rotation (shoulder tilt - roll)
-            const shoulderTilt = Math.atan2(shoulderVectorY, shoulderVectorX);
-            
-            // Y-rotation (body rotation - yaw)
-            // When shoulders are at different depths, body is turning
-            const bodyYaw = Math.atan2(shoulderVectorZ, shoulderVectorX);
-            
-            // X-rotation (body lean - pitch)
-            const hipMidWorldZ = (leftHipWorld.z + rightHipWorld.z) / 2;
-            const shoulderMidWorldZ = (leftShoulderWorld.z + rightShoulderWorld.z) / 2;
-            const bodyPitch = Math.atan2(
-                shoulderMidWorldZ - hipMidWorldZ,
-                shoulderMidWorldY - hipMidWorldY
+            // Shoulder tilt (Z-axis rotation)
+            const shoulderTilt = Math.atan2(
+                rightShoulder.y - leftShoulder.y,
+                rightShoulder.x - leftShoulder.x
             );
             
-            // Apply rotations in proper order
+            // Body rotation (Y-axis) - use depth difference
+            const depthDiff = rightShoulder.z - leftShoulder.z;
+            const shoulderSpread = Math.abs(rightShoulder.x - leftShoulder.x);
+            
+            let rotationY = 0;
+            if (shoulderSpread > 0.1) {
+                rotationY = depthDiff * 3;
+                rotationY = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, rotationY));
+            }
+            
+            // Body lean (X-axis)
+            const bodyLean = (shoulderCenterZ - hipCenterZ) * 3;
+            const clampedLean = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, bodyLean));
+            
             armorModel.rotation.set(
-                bodyPitch,           // X: lean forward/back
-                -bodyYaw,            // Y: turn left/right (negated for correct direction)
-                -shoulderTilt        // Z: tilt left/right (negated for correct direction)
+                clampedLean,
+                rotationY,
+                shoulderTilt
             );
             
             armorModel.visible = true;
-            statusDiv.textContent = `⚔️ Armor Active`;
+            
+            // Show debug info
+            const distanceIndicator = Math.round((1 / depthFactor) * 100);
+            statusDiv.textContent = `⚔️ Tracking (Dist: ${distanceIndicator}%, Scale: ${smoothedScale.toFixed(2)})`;
             statusDiv.className = "ready";
         }
         
@@ -376,9 +385,8 @@
                 const startTime = performance.now();
                 const results = poseLandmarker.detectForVideo(video, startTime);
                 
-                if (results.landmarks && results.landmarks.length > 0 &&
-                    results.worldLandmarks && results.worldLandmarks.length > 0) {
-                    positionArmorOnBody(results.landmarks[0], results.worldLandmarks[0]);
+                if (results.landmarks && results.landmarks.length > 0) {
+                    positionArmorOnBody(results.landmarks[0]);
                 } else {
                     if (armorModel) armorModel.visible = false;
                     statusDiv.textContent = "No person detected";
