@@ -97,7 +97,7 @@
         let isModelLoaded = false;
         
         // Smoothing
-        let smoothedScale = 0.5; // Start with smaller scale
+        let smoothedScale = 0.5;
         let smoothedPosX = 0;
         let smoothedPosY = 0;
         let smoothedPosZ = 0;
@@ -219,22 +219,23 @@
                     
                     // Calculate a scale factor to normalize the model size
                     const maxDim = Math.max(size.x, size.y, size.z);
-                    const scaleFactor = 1.5 / maxDim; // Normalize to 1.5 units
+                    const scaleFactor = 1.0 / maxDim; // Normalize to 1 unit
                     
                     loadedModel.scale.setScalar(scaleFactor);
                     loadedModel.position.sub(center.multiplyScalar(scaleFactor));
                     
-                    // FIX: Correct the rotation - removed the Math.PI rotation
-                    // This should fix the upside-down issue
-                    loadedModel.rotation.y = 0;
+                    // FIX: Apply proper rotation to match camera view
+                    // Remove previous rotation fixes and start fresh
+                    loadedModel.rotation.set(0, 0, 0);
                     
                     // Create parent group for better control
                     const modelGroup = new THREE.Group();
+                    
+                    // FIX: Apply coordinate system correction
+                    // Since canvas is mirrored, we need to counter-rotate the model
+                    modelGroup.rotation.y = Math.PI; // Face the correct direction in mirrored space
+                    
                     modelGroup.add(loadedModel);
-                    
-                    // Apply additional rotation to match camera view
-                    modelGroup.rotation.y = Math.PI; // Face the camera
-                    
                     scene.add(modelGroup);
                     armorModel = modelGroup;
                     
@@ -259,7 +260,7 @@
             );
         }
         
-        // ==================== IMPROVED TRACKING WITH BETTER SCALING ====================
+        // ==================== CORRECTED COORDINATE SYSTEM TRACKING ====================
         function positionArmorOnBody(landmarks) {
             if (!armorModel || !isModelLoaded) return;
             
@@ -282,7 +283,7 @@
                 return;
             }
             
-            // ==================== POSITION TRACKING ====================
+            // ==================== CORRECTED POSITION TRACKING ====================
             // Calculate chest center in normalized coordinates (0-1)
             const shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2;
             const shoulderCenterY = (leftShoulder.y + rightShoulder.y) / 2;
@@ -297,11 +298,11 @@
             const chestY = shoulderCenterY * 0.7 + hipCenterY * 0.3;
             const chestZ = shoulderCenterZ * 0.7 + hipCenterZ * 0.3;
             
-            // Convert to Three.js coordinates
-            // FIX: Adjusted coordinate mapping for better positioning
-            const targetPosX = (chestX - 0.5) * 3;      // Reduced from 4 to 3
-            const targetPosY = -(chestY - 0.5) * 2.5;   // Reduced from 4 to 2.5, adjusted Y scaling
-            const targetPosZ = -chestZ * 3 - 0.5;       // Reduced depth factor from 5 to 3
+            // FIX: Correct coordinate system mapping for mirrored canvas
+            // Convert MediaPipe coordinates (0-1) to Three.js world coordinates
+            const targetPosX = (chestX - 0.5) * 2.5;      // Reduced scale for better positioning
+            const targetPosY = -(chestY - 0.5) * 2.5;     // Flip Y and scale
+            const targetPosZ = -chestZ * 2 - 0.5;         // Depth positioning
             
             // Apply position smoothing for stable tracking
             smoothedPosX += (targetPosX - smoothedPosX) * POSITION_SMOOTHING;
@@ -310,8 +311,7 @@
             
             armorModel.position.set(smoothedPosX, smoothedPosY, smoothedPosZ);
             
-            // ==================== IMPROVED AUTO SCALING ====================
-            
+            // ==================== IMPROVED SCALING ====================
             // Calculate shoulder width (indicator of distance)
             const shoulderWidth = Math.sqrt(
                 Math.pow(rightShoulder.x - leftShoulder.x, 2) +
@@ -327,19 +327,14 @@
             // Use nose Z-depth as primary distance indicator
             const depthValue = Math.max(0.1, Math.abs(nose.z));
             
-            // FIX: Improved scaling calculation
-            // Base scale from body proportions
-            const bodyProportionScale = (shoulderWidth * 0.6 + torsoHeight * 0.4) * 8; // Reduced from 10 to 8
-            
-            // Depth compensation - more conservative
-            const depthFactor = Math.max(0.3, Math.min(8, 0.8 / depthValue)); // Reduced max from 15 to 8
-            
-            // Combine factors with smaller base multiplier
-            const targetScale = bodyProportionScale * depthFactor * 0.3; // Reduced from 0.5 to 0.3
+            // Improved scaling calculation
+            const bodyProportionScale = (shoulderWidth * 0.6 + torsoHeight * 0.4) * 6;
+            const depthFactor = Math.max(0.3, Math.min(6, 0.8 / depthValue));
+            const targetScale = bodyProportionScale * depthFactor * 0.25;
             
             // Apply minimum and maximum scale limits
-            const minScale = 0.2;
-            const maxScale = 1.5;
+            const minScale = 0.15;
+            const maxScale = 1.2;
             const clampedTargetScale = Math.max(minScale, Math.min(maxScale, targetScale));
             
             // Smooth scaling transitions
@@ -347,9 +342,10 @@
             
             armorModel.scale.set(smoothedScale, smoothedScale, smoothedScale);
             
-            // ==================== ROTATION TRACKING ====================
+            // ==================== CORRECTED ROTATION TRACKING ====================
+            // FIX: Proper rotation calculations for mirrored coordinate system
             
-            // Shoulder tilt (Z-axis rotation)
+            // Shoulder tilt (Z-axis rotation) - adjusted for mirroring
             const shoulderTilt = Math.atan2(
                 rightShoulder.y - leftShoulder.y,
                 rightShoulder.x - leftShoulder.x
@@ -361,25 +357,26 @@
             
             let rotationY = 0;
             if (shoulderSpread > 0.1) {
-                rotationY = depthDiff * 2; // Reduced from 3 to 2
+                // FIX: Invert Y rotation for mirrored coordinate system
+                rotationY = -depthDiff * 2;
                 rotationY = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, rotationY));
             }
             
             // Body lean (X-axis)
-            const bodyLean = (shoulderCenterZ - hipCenterZ) * 2; // Reduced from 3 to 2
+            const bodyLean = (shoulderCenterZ - hipCenterZ) * 2;
             const clampedLean = Math.max(-Math.PI / 6, Math.min(Math.PI / 6, bodyLean));
             
-            // FIX: Apply rotations to the model group, not the individual model
+            // FIX: Apply corrected rotations
+            // In mirrored space, we need to adjust the rotation directions
             armorModel.rotation.set(
-                clampedLean,
-                rotationY,
-                shoulderTilt
+                clampedLean,        // X rotation (lean)
+                rotationY,          // Y rotation (body turn) - already inverted
+                -shoulderTilt       // Z rotation (tilt) - inverted for mirror
             );
             
             armorModel.visible = true;
             
             // Show debug info
-            const distanceIndicator = Math.round(depthValue * 100);
             statusDiv.textContent = `⚔️ Tracking (Scale: ${smoothedScale.toFixed(2)})`;
             statusDiv.className = "ready";
         }
