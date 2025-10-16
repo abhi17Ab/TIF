@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bahubali Armour Body Tracking - Direct Mapping</title>
+    <title>Bahubali Armour Body Tracking - Fixed Rotation Mapping</title>
     <style>
         /* ==================== RESET & BASE ==================== */
         * {
@@ -268,7 +268,7 @@
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Rig Type</span>
-                        <span class="metric-value" id="displayRigType">Direct Mapping</span>
+                        <span class="metric-value" id="displayRigType">Rotation Mapping</span>
                     </div>
                     <div class="metric-row">
                         <span class="metric-label">Alignment</span>
@@ -366,40 +366,43 @@
             }
         };
 
-        // ==================== DIRECT LANDMARK TO BONE MAPPING ====================
-        const LANDMARK_TO_BONE_MAP = {
-            // Spine chain - using direct landmark positions
-            'spine': 23, // Use left hip as base, we'll calculate midpoint
-            'spine001': 23, // Will be calculated
-            'spine002': 11, // Shoulder level
-            'spine003': 11, // Upper chest
-            'spine004': 0, // Neck/head base
-            'spine005': 0, // Head
-            'spine006': 0, // Head top
+        // ==================== BONE MAPPINGS WITH TARGETS ====================
+        const BONE_MAPPINGS = {
+            // Format: boneName: { start: landmarkIndex, end: landmarkIndex }
+            // The bone should point from start to end
             
-            // Left arm chain
-            'shoulderL': 11,
-            'upper_armL': 11,
-            'forearmL': 13,
-            'handL': 15,
+            // Spine chain
+            'spine': { start: 23, end: 24, mid: true }, // Hip center
+            'spine001': { start: 23, end: 11, interpolate: 0.33 }, // Lower spine
+            'spine002': { start: 23, end: 11, interpolate: 0.66 }, // Mid spine
+            'spine003': { start: 11, end: 12, mid: true }, // Upper spine/shoulder center
+            'spine004': { start: 11, end: 0 }, // Neck
+            'spine005': { start: 0, end: 9 }, // Head
+            'spine006': { start: 0, end: 10 }, // Head top
             
-            // Right arm chain  
-            'shoulderR': 12,
-            'upper_armR': 12,
-            'forearmR': 14,
-            'handR': 16,
+            // Left arm
+            'shoulderL': { start: 11, end: 13 },
+            'upper_armL': { start: 11, end: 13 },
+            'forearmL': { start: 13, end: 15 },
+            'handL': { start: 15, end: 19 }, // to pinky
             
-            // Left leg chain
-            'thighL': 23,
-            'shinL': 25,
-            'footL': 27,
-            'toeL': 31,
+            // Right arm  
+            'shoulderR': { start: 12, end: 14 },
+            'upper_armR': { start: 12, end: 14 },
+            'forearmR': { start: 14, end: 16 },
+            'handR': { start: 16, end: 20 }, // to pinky
             
-            // Right leg chain
-            'thighR': 24,
-            'shinR': 26,
-            'footR': 28,
-            'toeR': 32
+            // Left leg
+            'thighL': { start: 23, end: 25 },
+            'shinL': { start: 25, end: 27 },
+            'footL': { start: 27, end: 31 },
+            'toeL': { start: 31, end: 27 },
+            
+            // Right leg
+            'thighR': { start: 24, end: 26 },
+            'shinR': { start: 26, end: 28 },
+            'footR': { start: 28, end: 32 },
+            'toeR': { start: 32, end: 28 }
         };
 
         // ==================== MODEL SETTINGS ====================
@@ -468,7 +471,7 @@
             }
         }
 
-        // ==================== THREE.JS RENDERER - DIRECT MAPPING ====================
+        // ==================== THREE.JS RENDERER - ROTATION MAPPING ====================
         class ThreeJSRenderer {
             constructor(canvas, settings) {
                 this.canvas = canvas;
@@ -480,7 +483,7 @@
                 this.skeleton = null;
                 this.boneMap = new Map();
                 this.modelLoaded = false;
-                this.initialHipPosition = null;
+                this.hipPosition = null;
                 
                 this.initialize();
             }
@@ -557,20 +560,20 @@
                 this.boneMap.clear();
                 let mappedCount = 0;
 
-                console.log('🔍 Mapping bones directly to landmarks...');
+                console.log('🔍 Mapping bones to rotation targets...');
                 
-                for (const [boneName, landmarkIndex] of Object.entries(LANDMARK_TO_BONE_MAP)) {
+                for (const [boneName, mapping] of Object.entries(BONE_MAPPINGS)) {
                     const bone = this.skeleton.bones.find(b => b.name === boneName);
                     if (bone) {
-                        this.boneMap.set(bone, landmarkIndex);
-                        console.log(`✅ Mapped bone "${boneName}" to landmark ${landmarkIndex}`);
+                        this.boneMap.set(bone, mapping);
+                        console.log(`✅ Mapped bone "${boneName}" to landmarks ${mapping.start} → ${mapping.end}`);
                         mappedCount++;
                     } else {
                         console.warn(`⚠️ Could not find bone: ${boneName}`);
                     }
                 }
 
-                document.getElementById('displayBones').textContent = `${mappedCount}/${Object.keys(LANDMARK_TO_BONE_MAP).length}`;
+                document.getElementById('displayBones').textContent = `${mappedCount}/${Object.keys(BONE_MAPPINGS).length}`;
                 return mappedCount;
             }
 
@@ -620,70 +623,86 @@
 
             landmarkToWorld(landmark) {
                 // Convert MediaPipe normalized coordinates to Three.js world coordinates
-                // MediaPipe: (0,0) top-left, (1,1) bottom-right
-                // Three.js: centered, y-up
                 return new THREE.Vector3(
-                    (landmark.x - 0.5) * 3,  // Scale for better visibility
-                    (0.5 - landmark.y) * 3 + this.settings.offsetY,  // Flip Y and add offset
-                    -landmark.z * 2  // Depth adjustment
+                    (landmark.x - 0.5) * 3,
+                    (0.5 - landmark.y) * 3 + this.settings.offsetY,
+                    -landmark.z * 2
                 );
             }
 
-            updateBonePositions(landmarks) {
+            // ==================== FIXED ROTATION CALCULATION ====================
+            updateBoneRotations(landmarks) {
                 if (!this.skeleton || !landmarks) return;
 
-                let hipsAdjusted = false;
+                // First, position the root (hips)
+                this.positionRoot(landmarks);
                 
-                // First pass: position bones based on landmarks
-                for (const [bone, landmarkIndex] of this.boneMap) {
-                    const landmark = landmarks[landmarkIndex];
-                    if (landmark && landmark.visibility > CONFIG.VISIBILITY_THRESHOLD) {
-                        const worldPos = this.landmarkToWorld(landmark);
-                        
-                        // Special handling for spine/hips to establish base position
-                        if (bone.name === 'spine' && !hipsAdjusted) {
-                            this.initialHipPosition = worldPos.clone();
-                            hipsAdjusted = true;
-                        }
-                        
-                        bone.position.copy(worldPos);
-                    }
+                // Then rotate each bone to point toward its target
+                for (const [bone, mapping] of this.boneMap) {
+                    this.rotateBoneToTarget(bone, mapping, landmarks);
                 }
 
-                // Second pass: adjust spine chain for better alignment
-                this.adjustSpineChain(landmarks);
-                
-                // Update skeleton
-                this.skeleton.update();
+                // Update all bone matrices
+                this.skeleton.bones[0].updateMatrixWorld(true);
             }
 
-            adjustSpineChain(landmarks) {
-                if (!landmarks[23] || !landmarks[24] || !landmarks[11] || !landmarks[12]) return;
+            positionRoot(landmarks) {
+                if (!landmarks[23] || !landmarks[24]) return;
 
-                // Calculate hip center
+                // Calculate hip center position
                 const leftHip = this.landmarkToWorld(landmarks[23]);
                 const rightHip = this.landmarkToWorld(landmarks[24]);
                 const hipCenter = new THREE.Vector3().addVectors(leftHip, rightHip).multiplyScalar(0.5);
 
-                // Calculate shoulder center
-                const leftShoulder = this.landmarkToWorld(landmarks[11]);
-                const rightShoulder = this.landmarkToWorld(landmarks[12]);
-                const shoulderCenter = new THREE.Vector3().addVectors(leftShoulder, rightShoulder).multiplyScalar(0.5);
+                // Position the model at hip center
+                if (this.model) {
+                    this.model.position.copy(hipCenter);
+                }
+                
+                this.hipPosition = hipCenter;
+            }
 
-                // Adjust spine bones for smooth transition
-                const spineBones = ['spine', 'spine001', 'spine002', 'spine003', 'spine004'];
-                spineBones.forEach((boneName, index) => {
-                    const bone = this.skeleton.bones.find(b => b.name === boneName);
-                    if (bone) {
-                        const t = index / (spineBones.length - 1);
-                        bone.position.lerpVectors(hipCenter, shoulderCenter, t);
-                    }
-                });
+            rotateBoneToTarget(bone, mapping, landmarks) {
+                const startLandmark = landmarks[mapping.start];
+                const endLandmark = landmarks[mapping.end];
 
-                // Update alignment display
-                const alignment = Math.abs(shoulderCenter.y - hipCenter.y) < 0.5 ? 'Good' : 'Adjusting';
-                document.getElementById('displayAlignment').textContent = alignment;
-                document.getElementById('displayAlignment').style.color = alignment === 'Good' ? '#4CAF50' : '#FFA726';
+                if (!startLandmark || !endLandmark) return;
+                if (startLandmark.visibility < CONFIG.VISIBILITY_THRESHOLD || 
+                    endLandmark.visibility < CONFIG.VISIBILITY_THRESHOLD) return;
+
+                // Get world positions
+                let startPos = this.landmarkToWorld(startLandmark);
+                let endPos = this.landmarkToWorld(endLandmark);
+
+                // Handle special cases (midpoint, interpolation)
+                if (mapping.mid) {
+                    endPos = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
+                }
+                if (mapping.interpolate !== undefined) {
+                    endPos = new THREE.Vector3().lerpVectors(startPos, endPos, mapping.interpolate);
+                }
+
+                // Calculate direction vector
+                const direction = new THREE.Vector3().subVectors(endPos, startPos).normalize();
+
+                // Get bone's initial direction (usually along Y-axis in rest pose)
+                const boneDirection = new THREE.Vector3(0, 1, 0);
+
+                // Calculate rotation quaternion to align bone with direction
+                const quaternion = new THREE.Quaternion();
+                quaternion.setFromUnitVectors(boneDirection, direction);
+
+                // Apply rotation in local space
+                // Convert world quaternion to local space relative to parent
+                if (bone.parent) {
+                    const parentWorldQuaternion = new THREE.Quaternion();
+                    bone.parent.getWorldQuaternion(parentWorldQuaternion);
+                    parentWorldQuaternion.invert();
+                    quaternion.premultiply(parentWorldQuaternion);
+                }
+
+                // Smooth rotation with damping
+                bone.quaternion.slerp(quaternion, 0.3);
             }
 
             updateModelPose(landmarks) {
@@ -706,10 +725,14 @@
                         this.settings.updateDisplay();
                     }
 
-                    // Update bone positions directly from landmarks
-                    this.updateBonePositions(landmarks);
+                    // Update bone rotations based on landmarks
+                    this.updateBoneRotations(landmarks);
 
                     this.renderer.render(this.scene, this.camera);
+
+                    // Update alignment status
+                    document.getElementById('displayAlignment').textContent = 'Active';
+                    document.getElementById('displayAlignment').style.color = '#4CAF50';
 
                     return { visible: true };
                 } catch (error) {
