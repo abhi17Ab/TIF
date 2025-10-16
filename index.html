@@ -190,7 +190,7 @@
             console.log("✓ Three.js ready");
         }
         
-        // ==================== LOAD ARMOR MODEL (FIXED ORIENTATION) ====================
+        // ==================== LOAD ARMOR MODEL (FIXED BASE ROTATION) ====================
         function loadArmorModel() {
             const loader = new GLTFLoader();
             
@@ -207,16 +207,13 @@
                     const center = box.getCenter(new THREE.Vector3());
                     loadedModel.position.sub(center);
                     
-                    // Create group for the model
+                    // FIXED: Apply base orientation correction to loaded model itself
+                    // This corrects the 180° Z-rotation from Blender export
+                    loadedModel.rotation.y = Math.PI; // Rotate 180° on Y-axis to face forward
+                    
+                    // Create parent group for positioning/tracking
                     const modelGroup = new THREE.Group();
                     modelGroup.add(loadedModel);
-                    
-                    // FIX ORIENTATION: Rotate model to correct upside-down issue
-                    // If model is upside down, rotate 180° on X-axis
-                    modelGroup.rotation.x = Math.PI; // 180 degrees
-                    
-                    // FIX MIRRORING: Scale X negative to flip horizontally
-                    modelGroup.scale.set(-1, 1, 1);
                     
                     scene.add(modelGroup);
                     armorModel = modelGroup;
@@ -242,7 +239,7 @@
             );
         }
         
-        // ==================== AUTOMATIC ARMOR POSITIONING (FIXED COORDINATES) ====================
+        // ==================== AUTOMATIC ARMOR POSITIONING (FIXED ROTATION) ====================
         function positionArmorOnBody(landmarks) {
             if (!armorModel || !isModelLoaded) return;
             
@@ -274,18 +271,15 @@
             const hipCenterY = (leftHip.y + rightHip.y) / 2;
             const hipCenterZ = (leftHip.z + rightHip.z) / 2;
             
-            // Chest anchor point (slightly below shoulders)
+            // Chest anchor point
             const chestX = shoulderCenterX * 0.65 + hipCenterX * 0.35;
             const chestY = shoulderCenterY * 0.65 + hipCenterY * 0.35;
             const chestZ = shoulderCenterZ * 0.65 + hipCenterZ * 0.35;
             
-            // FIXED COORDINATE CONVERSION
-            // MediaPipe: X(0-1 left-right), Y(0-1 top-bottom), Z(depth)
-            // Three.js: X(-2 to 2 left-right), Y(-2 to 2 bottom-top), Z(depth)
-            
-            const posX = (chestX - 0.5) * 4;  // Center at 0, scale to -2 to 2
-            const posY = -(chestY - 0.5) * 4;  // Flip Y and center
-            const posZ = -chestZ * 4;  // Move forward from camera
+            // Position conversion
+            const posX = (chestX - 0.5) * 4;
+            const posY = -(chestY - 0.5) * 4;
+            const posZ = -chestZ * 4;
             
             armorModel.position.set(posX, posY, posZ);
             
@@ -300,40 +294,55 @@
                 Math.pow(shoulderCenterY - hipCenterY, 2)
             );
             
-            // Distance-based scaling
             const bodyDepth = Math.abs(nose.z);
             const depthFactor = 1 / Math.max(0.3, Math.min(1.5, bodyDepth));
             
-            // Calculate final scale
             const baseScale = shoulderWidth * 5.5;
             const torsoScale = torsoLength * 2.0;
             const finalScale = ((baseScale + torsoScale) / 2) * depthFactor;
             
-            // Apply scale (remember we already flipped X in the model group)
-            const scaleX = finalScale;
-            const scaleY = finalScale;
-            const scaleZ = finalScale;
-            armorModel.scale.set(scaleX, scaleY, scaleZ);
+            armorModel.scale.set(finalScale, finalScale, finalScale);
             
-            // ROTATION TRACKING (FIXED AXES)
-            // Z-axis: Shoulder tilt (left shoulder up/down vs right)
-            const shoulderAngle = Math.atan2(
+            // ROTATION TRACKING (FIXED - NO UPSIDE DOWN)
+            // Calculate shoulder tilt angle
+            const shoulderTilt = Math.atan2(
                 rightShoulder.y - leftShoulder.y,
                 rightShoulder.x - leftShoulder.x
             );
             
-            // Y-axis: Body rotation (turning left/right)
-            const shoulderDepthDiff = rightShoulder.z - leftShoulder.z;
-            const rotationY = shoulderDepthDiff * 3;
+            // Calculate body rotation (turning left/right)
+            // Use shoulder depth difference
+            const leftShoulderDepth = leftShoulder.z;
+            const rightShoulderDepth = rightShoulder.z;
+            const depthDiff = rightShoulderDepth - leftShoulderDepth;
             
-            // X-axis: Body lean (forward/backward)
-            const bodyLean = (shoulderCenterZ - hipCenterZ) * 3;
+            // FIXED: Limit rotation to prevent flipping upside down
+            // Use shoulder X positions to determine if user is facing away
+            const shoulderSpread = Math.abs(rightShoulder.x - leftShoulder.x);
+            const isFacingCamera = shoulderSpread > 0.15; // Threshold for front/back detection
             
-            // Apply rotations with base orientation correction
+            let rotationY = 0;
+            if (isFacingCamera) {
+                // Facing camera - normal tracking
+                rotationY = depthDiff * 2.5;
+                // Clamp to reasonable range
+                rotationY = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, rotationY));
+            } else {
+                // Facing away - flip 180°
+                rotationY = Math.PI;
+            }
+            
+            // Calculate body lean (forward/backward)
+            const bodyLean = (shoulderCenterZ - hipCenterZ) * 2.5;
+            // Clamp lean to prevent extreme angles
+            const clampedLean = Math.max(-Math.PI / 6, Math.min(Math.PI / 6, bodyLean));
+            
+            // Apply rotations to parent group
+            // Order: X (lean), Y (turn), Z (tilt)
             armorModel.rotation.set(
-                Math.PI + bodyLean,  // X: Keep base flip + add lean
-                rotationY,           // Y: Body twist
-                shoulderAngle        // Z: Shoulder tilt
+                clampedLean,      // X: Body lean (limited range)
+                rotationY,        // Y: Body rotation
+                shoulderTilt      // Z: Shoulder tilt
             );
             
             armorModel.visible = true;
