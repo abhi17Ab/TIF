@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bahubali Armour - Direct Camera Overlay</title>
+    <title>Bahubali Armour - Enhanced Tracking</title>
     <style>
         /* ==================== RESET & BASE ==================== */
         * {
@@ -68,6 +68,7 @@
             height: 100%;
             display: block;
             object-fit: cover;
+            transform: scaleX(-1); /* Mirror the camera feed */
         }
 
         #output_canvas,
@@ -203,6 +204,64 @@
             background: rgba(100, 181, 246, 0.3);
         }
 
+        /* ==================== FULLSCREEN STYLES ==================== */
+        body.fullscreen {
+            padding: 0;
+            background: #000;
+        }
+
+        body.fullscreen .app-container {
+            max-width: none;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        body.fullscreen h1 {
+            display: none;
+        }
+
+        body.fullscreen .main-grid {
+            flex: 1;
+            grid-template-columns: 1fr;
+            gap: 0;
+            margin-bottom: 0;
+        }
+
+        body.fullscreen .video-section {
+            height: 100%;
+        }
+
+        body.fullscreen .video-container {
+            border-radius: 0;
+            aspect-ratio: auto;
+            height: 100%;
+        }
+
+        body.fullscreen .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        body.fullscreen .metrics-panel {
+            display: none;
+        }
+
+        body.fullscreen .status-card {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 300px;
+            z-index: 100;
+        }
+
         /* ==================== RESPONSIVE ==================== */
         @media (max-width: 1024px) {
             .main-grid {
@@ -219,7 +278,7 @@
 </head>
 <body>
     <div class="app-container">
-        <h1>⚔️ Bahubali Armour - Direct Camera Overlay</h1>
+        <h1>⚔️ Bahubali Armour - Enhanced Tracking</h1>
 
         <div class="main-grid">
             <!-- Video Section -->
@@ -238,6 +297,8 @@
                     <button id="toggleSkeleton" class="active">👤 Skeleton</button>
                     <button id="toggleConnections" class="active">🔗 Connections</button>
                     <button id="toggle3DModel" class="active">🎭 Armour</button>
+                    <button id="fullscreenButton">⛶ Fullscreen</button>
+                    <button id="switchCameraButton">📷 Switch Camera</button>
                 </div>
 
                 <!-- Status Card -->
@@ -248,6 +309,9 @@
                     </div>
                     <div style="margin-top: 8px;">
                         <span id="modelStatus" style="color: #FFA726;">Armour: Not Loaded</span>
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <span id="cameraStatus" style="color: #64B5F6;">Camera: Front</span>
                     </div>
 
                     <div class="adjustment-controls">
@@ -361,6 +425,8 @@
                 this.previousLandmarks = null;
                 this.previousTimestamp = 0;
                 this.smoothedLandmarks = null;
+                this.isFullscreen = false;
+                this.currentCamera = 'user'; // 'user' for front, 'environment' for back
             }
         }
 
@@ -443,7 +509,9 @@
                     stop: document.getElementById('stopButton'),
                     toggleSkeleton: document.getElementById('toggleSkeleton'),
                     toggleConnections: document.getElementById('toggleConnections'),
-                    toggle3DModel: document.getElementById('toggle3DModel')
+                    toggle3DModel: document.getElementById('toggle3DModel'),
+                    fullscreen: document.getElementById('fullscreenButton'),
+                    switchCamera: document.getElementById('switchCameraButton')
                 };
 
                 this.displays = {
@@ -451,6 +519,7 @@
                     landmarkCount: document.getElementById('landmarkCount'),
                     fps: document.getElementById('fpsCounter'),
                     modelStatus: document.getElementById('modelStatus'),
+                    cameraStatus: document.getElementById('cameraStatus'),
                     posture: document.getElementById('posture'),
                     bodyHeight: document.getElementById('bodyHeight'),
                     shoulderWidth: document.getElementById('shoulderWidth'),
@@ -476,9 +545,24 @@
                 this.displays.modelStatus.style.color = color;
             }
 
+            updateCameraStatus(message, color = '#64B5F6') {
+                this.displays.cameraStatus.textContent = message;
+                this.displays.cameraStatus.style.color = color;
+            }
+
             setButtonStates(tracking) {
                 this.buttons.start.disabled = tracking;
                 this.buttons.stop.disabled = !tracking;
+            }
+
+            toggleFullscreen(isFullscreen) {
+                if (isFullscreen) {
+                    document.body.classList.add('fullscreen');
+                    this.buttons.fullscreen.textContent = '⛶ Exit Fullscreen';
+                } else {
+                    document.body.classList.remove('fullscreen');
+                    this.buttons.fullscreen.textContent = '⛶ Fullscreen';
+                }
             }
         }
 
@@ -649,7 +733,8 @@
             // Convert normalized MediaPipe coordinates to Three.js world coordinates
             normalizedToWorld(normalizedX, normalizedY, normalizedZ = 0) {
                 // Convert from normalized [0,1] to [-1,1] range
-                const x = (normalizedX - 0.5) * 2;
+                // Mirror X coordinate to match the mirrored camera feed
+                const x = -(normalizedX - 0.5) * 2; // Fixed mirroring by adding negative sign
                 const y = -(normalizedY - 0.5) * 2; // Flip Y axis
                 const z = (normalizedZ || 0) * -2; // Convert depth
                 
@@ -694,10 +779,11 @@
                 return visibleCount >= 3;
             }
 
-            // Calculate bone rotation between two landmarks
+            // Calculate bone rotation between two landmarks - FIXED MIRRORING
             calculateBoneRotation(fromLandmark, toLandmark) {
-                const from = new THREE.Vector3(fromLandmark.x, -fromLandmark.y, fromLandmark.z || 0);
-                const to = new THREE.Vector3(toLandmark.x, -toLandmark.y, toLandmark.z || 0);
+                // Mirror X coordinates to match the camera feed
+                const from = new THREE.Vector3(-fromLandmark.x, -fromLandmark.y, fromLandmark.z || 0);
+                const to = new THREE.Vector3(-toLandmark.x, -toLandmark.y, toLandmark.z || 0);
                 
                 const direction = new THREE.Vector3().subVectors(to, from).normalize();
                 const quaternion = new THREE.Quaternion();
@@ -733,7 +819,7 @@
                 });
             }
 
-            // Animate bones using direct coordinate mapping
+            // Animate bones using direct coordinate mapping - FIXED MIRRORING
             animateBonesDirect(landmarks) {
                 if (!this.skeleton || !landmarks) return;
 
@@ -789,7 +875,7 @@
                         }
                     }
 
-                    // Left arm chain
+                    // Left arm chain - FIXED MIRRORING
                     if (landmarks[11] && landmarks[13] && landmarks[15]) {
                         if (this.boneMapper.hasBone('leftUpperArm')) {
                             const bone = this.boneMapper.getBone('leftUpperArm');
@@ -804,7 +890,7 @@
                         }
                     }
 
-                    // Right arm chain
+                    // Right arm chain - FIXED MIRRORING
                     if (landmarks[12] && landmarks[14] && landmarks[16]) {
                         if (this.boneMapper.hasBone('rightUpperArm')) {
                             const bone = this.boneMapper.getBone('rightUpperArm');
@@ -819,7 +905,7 @@
                         }
                     }
 
-                    // Left leg chain
+                    // Left leg chain - FIXED MIRRORING
                     if (landmarks[23] && landmarks[25] && landmarks[27]) {
                         if (this.boneMapper.hasBone('leftUpLeg')) {
                             const bone = this.boneMapper.getBone('leftUpLeg');
@@ -834,7 +920,7 @@
                         }
                     }
 
-                    // Right leg chain
+                    // Right leg chain - FIXED MIRRORING
                     if (landmarks[24] && landmarks[26] && landmarks[28]) {
                         if (this.boneMapper.hasBone('rightUpLeg')) {
                             const bone = this.boneMapper.getBone('rightUpLeg');
@@ -1098,13 +1184,16 @@
                 return "Transitioning";
             }
 
-            async startCamera() {
+            async startCamera(cameraType = 'user') {
                 try {
+                    // Stop existing camera if running
+                    this.stopCamera();
+
                     const stream = await navigator.mediaDevices.getUserMedia({
                         video: {
                             width: { ideal: CONFIG.VIDEO_WIDTH },
                             height: { ideal: CONFIG.VIDEO_HEIGHT },
-                            facingMode: 'user'
+                            facingMode: cameraType
                         }
                     });
 
@@ -1124,6 +1213,11 @@
                     });
 
                     await this.camera.start();
+                    
+                    // Update camera status
+                    const cameraName = cameraType === 'user' ? 'Front' : 'Back';
+                    this.domManager.updateCameraStatus(`Camera: ${cameraName}`);
+                    
                     return true;
                 } catch (error) {
                     console.error('Camera error:', error);
@@ -1140,6 +1234,15 @@
                 if (this.domManager.videoElement.srcObject) {
                     this.domManager.videoElement.srcObject.getTracks().forEach(track => track.stop());
                     this.domManager.videoElement.srcObject = null;
+                }
+            }
+
+            async switchCamera() {
+                const newCameraType = this.appState.currentCamera === 'user' ? 'environment' : 'user';
+                this.appState.currentCamera = newCameraType;
+                
+                if (this.appState.isTracking) {
+                    await this.startCamera(newCameraType);
                 }
             }
         }
@@ -1178,9 +1281,18 @@
                 this.domManager.buttons.toggleSkeleton.addEventListener('click', () => this.toggleSkeleton());
                 this.domManager.buttons.toggleConnections.addEventListener('click', () => this.toggleConnections());
                 this.domManager.buttons.toggle3DModel.addEventListener('click', () => this.toggle3DModel());
+                this.domManager.buttons.fullscreen.addEventListener('click', () => this.toggleFullscreen());
+                this.domManager.buttons.switchCamera.addEventListener('click', () => this.switchCamera());
 
                 window.addEventListener('resize', () => this.threeJSRenderer.handleResize());
                 window.addEventListener('beforeunload', () => this.cleanup());
+                
+                // Listen for fullscreen change events
+                document.addEventListener('fullscreenchange', () => {
+                    this.appState.isFullscreen = !this.appState.isFullscreen;
+                    this.domManager.toggleFullscreen(this.appState.isFullscreen);
+                    this.threeJSRenderer.handleResize();
+                });
             }
 
             loadModel() {
@@ -1207,7 +1319,7 @@
                 if (this.appState.isTracking) return;
 
                 try {
-                    await this.mediaPipeProcessor.startCamera();
+                    await this.mediaPipeProcessor.startCamera(this.appState.currentCamera);
                     this.appState.isTracking = true;
                     this.domManager.updateStatus('✅ Tracking! Armour overlaying directly on your body', '#4CAF50');
                     this.domManager.setButtonStates(true);
@@ -1246,6 +1358,22 @@
                 this.appState.show3DModel = !this.appState.show3DModel;
                 this.domManager.buttons.toggle3DModel.classList.toggle('active');
                 this.domManager.threejsCanvas.style.display = this.appState.show3DModel ? 'block' : 'none';
+            }
+
+            toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                    });
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }
+            }
+
+            async switchCamera() {
+                await this.mediaPipeProcessor.switchCamera();
             }
 
             adjustScale(delta) {
