@@ -68,7 +68,7 @@
         <div id="status" class="loading">Initializing...</div>
     </div>
 
-    <!-- Three.js FIRST -->
+    <!-- Three.js -->
     <script type="importmap">
     {
         "imports": {
@@ -78,12 +78,11 @@
     }
     </script>
     
-    <!-- MediaPipe CDN - Fixed order -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js" crossorigin="anonymous"></script>
-    
+    <!-- CORRECT MediaPipe CDN -->
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
         
         // ==================== CONFIGURATION ====================
         const MODEL_PATH = './armour_bahubali.glb';
@@ -131,12 +130,6 @@
         // ==================== MEDIAPIPE INITIALIZATION (FIXED) ====================
         async function initPoseDetection() {
             try {
-                // Wait for MediaPipe to load
-                if (typeof FilesetResolver === 'undefined') {
-                    console.log("Waiting for MediaPipe to load...");
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-                
                 const vision = await FilesetResolver.forVisionTasks(
                     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
                 );
@@ -361,7 +354,7 @@
             }
         }
         
-        // ==================== WINDOW RESIZE (FIXED) ====================
+        // ==================== WINDOW RESIZE ====================
         window.addEventListener('resize', () => {
             if (camera && renderer) {
                 camera.aspect = window.innerWidth / window.innerHeight;
