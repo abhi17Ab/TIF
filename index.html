@@ -60,6 +60,20 @@
         .ready { color: #00ff00; }
         .loading { color: #ffaa00; }
         .error { color: #ff0000; }
+
+        #debug {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+            max-width: 300px;
+        }
     </style>
 </head>
 <body>
@@ -67,6 +81,7 @@
         <video id="video" autoplay playsinline muted></video>
         <canvas id="canvas3d"></canvas>
         <div id="status" class="loading">Initializing...</div>
+        <div id="debug" style="display: none;"></div>
     </div>
 
     <script type="importmap">
@@ -87,8 +102,9 @@
         const CONFIG = {
             MODEL_PATH: './armour_bahubali.glb',
             
-            // Simple orientation - glTF +Y Up handles coordinate conversion
-            MIRROR_MODE: true,  // Flip model to face camera in selfie mode
+            // Debug options
+            DEBUG_MODE: true,
+            SHOW_AXES: true,
             
             // Tracking quality
             MIN_VISIBILITY: 0.6,
@@ -100,20 +116,26 @@
             SCALE_SMOOTHING: 0.15,
             
             // Scale adjustments
-            BASE_SCALE: 0.5,        // Adjust if armor appears too big/small
+            BASE_SCALE: 0.5,
             MIN_SCALE: 0.2,
             MAX_SCALE: 1.2,
             
-            // Model positioning offsets (fine-tune if needed)
-            VERTICAL_OFFSET: 0,     // Move up/down (positive = up)
-            HORIZONTAL_OFFSET: 0,   // Move left/right (positive = right)
-            DEPTH_OFFSET: -0.3      // Move forward/back (negative = toward camera)
+            // Model positioning offsets - FIXED FOR CORRECT ORIENTATION
+            VERTICAL_OFFSET: -0.2,    // Adjusted for proper chest positioning
+            HORIZONTAL_OFFSET: 0,
+            DEPTH_OFFSET: -0.3,
+            
+            // ORIENTATION FIXES
+            MODEL_ROTATION_X: -Math.PI / 2,  // Convert from Z-up to Y-up
+            MODEL_ROTATION_Y: Math.PI,       // Face camera in mirror mode
+            MODEL_ROTATION_Z: 0
         };
         
         // ==================== GLOBALS ====================
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas3d');
         const statusDiv = document.getElementById('status');
+        const debugDiv = document.getElementById('debug');
         
         let poseLandmarker;
         let scene, camera, renderer;
@@ -121,10 +143,35 @@
         let lastVideoTime = -1;
         let isModelLoaded = false;
         
+        // Debug helpers
+        let axesHelper;
+        
         // Smoothing buffers
         let smoothedScale = CONFIG.BASE_SCALE;
         let smoothedPos = new THREE.Vector3(0, 0, 0);
         let smoothedRotation = new THREE.Euler(0, 0, 0);
+        
+        // ==================== DEBUG UTILITIES ====================
+        function updateDebugInfo(info) {
+            if (!CONFIG.DEBUG_MODE) return;
+            
+            debugDiv.innerHTML = info.map(line => 
+                `<div>${line}</div>`
+            ).join('');
+            debugDiv.style.display = 'block';
+        }
+        
+        function setupDebugHelpers() {
+            if (!CONFIG.SHOW_AXES) return;
+            
+            // Add coordinate axes at origin
+            axesHelper = new THREE.AxesHelper(1);
+            scene.add(axesHelper);
+            
+            // Add grid helper
+            const gridHelper = new THREE.GridHelper(4, 10);
+            scene.add(gridHelper);
+        }
         
         // ==================== CAMERA SETUP ====================
         async function initCamera() {
@@ -224,6 +271,9 @@
             backLight.position.set(0, -1, -2);
             scene.add(backLight);
             
+            // Setup debug visualization
+            setupDebugHelpers();
+            
             console.log("✓ Three.js ready");
         }
         
@@ -241,11 +291,17 @@
                     
                     const loadedModel = gltf.scene;
                     
-                    // Log model structure
+                    // Log model structure for debugging
                     let meshCount = 0;
                     loadedModel.traverse((child) => {
                         if (child.isMesh) {
                             meshCount++;
+                            console.log(`Mesh: ${child.name || 'unnamed'}`, {
+                                position: child.position.toArray(),
+                                rotation: child.rotation.toArray().map(r => THREE.MathUtils.radToDeg(r).toFixed(1) + '°'),
+                                scale: child.scale.toArray()
+                            });
+                            
                             // Optimize rendering
                             child.frustumCulled = false;
                             child.castShadow = true;
@@ -272,7 +328,7 @@
                     const center = box.getCenter(new THREE.Vector3());
                     const size = box.getSize(new THREE.Vector3());
                     
-                    console.log("Model dimensions:", {
+                    console.log("Original model dimensions:", {
                         size: size.toArray().map(v => v.toFixed(2)),
                         center: center.toArray().map(v => v.toFixed(2))
                     });
@@ -285,11 +341,11 @@
                     // Center the model at origin
                     loadedModel.position.sub(center.multiplyScalar(normalizeScale));
                     
-                    // CRITICAL: Only apply mirror flip if needed
-                    // glTF +Y Up export already handled Z-up to Y-up conversion
-                    if (CONFIG.MIRROR_MODE) {
-                        loadedModel.rotation.y = Math.PI; // 180° to face camera
-                    }
+                    // CRITICAL ORIENTATION FIXES
+                    // Apply fixed rotations to handle coordinate system conversion
+                    loadedModel.rotation.x = CONFIG.MODEL_ROTATION_X; // Convert Z-up to Y-up
+                    loadedModel.rotation.y = CONFIG.MODEL_ROTATION_Y; // Face camera
+                    loadedModel.rotation.z = CONFIG.MODEL_ROTATION_Z;
                     
                     // Create container for tracking transformations
                     const modelGroup = new THREE.Group();
@@ -304,8 +360,12 @@
                     console.log("✓ Armor loaded and ready");
                     console.log("Applied transformations:");
                     console.log("  - Normalized scale:", normalizeScale.toFixed(3));
-                    console.log("  - Mirror mode:", CONFIG.MIRROR_MODE ? "ON (180° Y)" : "OFF");
                     console.log("  - Base scale:", CONFIG.BASE_SCALE);
+                    console.log("  - Fixed rotations (radians):", {
+                        x: CONFIG.MODEL_ROTATION_X,
+                        y: CONFIG.MODEL_ROTATION_Y, 
+                        z: CONFIG.MODEL_ROTATION_Z
+                    });
                     
                     statusDiv.textContent = "Ready - stand in view";
                     statusDiv.className = "ready";
@@ -366,9 +426,10 @@
             
             // ==================== POSITION ====================
             // Convert MediaPipe normalized coordinates to Three.js world space
+            // FIXED: Proper coordinate mapping for orientation
             const targetPos = new THREE.Vector3(
                 (chestX - 0.5) * 2.8 + CONFIG.HORIZONTAL_OFFSET,
-                -(chestY - 0.4) * 2.8 + CONFIG.VERTICAL_OFFSET,
+                -(chestY - 0.5) * 2.8 + CONFIG.VERTICAL_OFFSET, // Fixed Y calculation
                 -chestZ * 2.5 + CONFIG.DEPTH_OFFSET
             );
             
@@ -423,11 +484,11 @@
             const leanAngle = (shoulderCenter.z - hipCenter.z) * 2;
             const clampedLean = Math.max(-Math.PI / 5, Math.min(Math.PI / 5, leanAngle));
             
-            // Target rotation
+            // Target rotation - FIXED for proper orientation
             const targetRotation = new THREE.Euler(
                 clampedLean,        // X - pitch (lean forward/back)
                 bodyTurn,           // Y - yaw (turn left/right)
-                -shoulderTilt       // Z - roll (lean side to side, inverted for mirror)
+                shoulderTilt        // Z - roll (lean side to side) - REMOVED negative for correct orientation
             );
             
             // Smooth rotation for natural movement
@@ -436,6 +497,16 @@
             smoothedRotation.z += (targetRotation.z - smoothedRotation.z) * CONFIG.ROTATION_SMOOTHING;
             
             armorModel.rotation.copy(smoothedRotation);
+            
+            // Update debug info
+            if (CONFIG.DEBUG_MODE) {
+                updateDebugInfo([
+                    `Position: ${smoothedPos.x.toFixed(2)}, ${smoothedPos.y.toFixed(2)}, ${smoothedPos.z.toFixed(2)}`,
+                    `Rotation: ${THREE.MathUtils.radToDeg(smoothedRotation.x).toFixed(1)}°, ${THREE.MathUtils.radToDeg(smoothedRotation.y).toFixed(1)}°, ${THREE.MathUtils.radToDeg(smoothedRotation.z).toFixed(1)}°`,
+                    `Scale: ${smoothedScale.toFixed(2)}`,
+                    `Visible: ${armorModel.visible ? 'YES' : 'NO'}`
+                ]);
+            }
             
             // Show model and update status
             armorModel.visible = true;
@@ -461,6 +532,10 @@
                     if (armorModel) armorModel.visible = false;
                     statusDiv.textContent = "No person detected";
                     statusDiv.className = "loading";
+                    
+                    if (CONFIG.DEBUG_MODE) {
+                        updateDebugInfo(["No person detected"]);
+                    }
                 }
             } catch (error) {
                 console.error("Detection error:", error);
