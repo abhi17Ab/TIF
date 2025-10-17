@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Armor Try-On - Fixed Coordinates</title>
+    <title>AR Armor Try-On</title>
     <style>
         * {
             margin: 0;
@@ -85,11 +85,6 @@
         // ==================== CONFIGURATION ====================
         const CONFIG = {
             MODEL_PATH: './armour.glb',
-            
-            // IMPORTANT: Set this based on your Blender export settings
-            // If you exported WITH "+Y Up" checked in Blender → set to true
-            // If you exported WITHOUT "+Y Up" (pure Z-up) → set to false
-            MODEL_ALREADY_Y_UP: true,  // Change based on your export!
             
             // Tracking
             MIN_VISIBILITY: 0.6,
@@ -238,18 +233,8 @@
                     model.scale.setScalar(1 / maxDim);
                     model.position.sub(center.multiplyScalar(1 / maxDim));
                     
-                    // ==================== COORDINATE SYSTEM FIX ====================
-                    // Blender Z-up (x,y,z) → Three.js Y-up (x,z,-y)
-                    if (!CONFIG.MODEL_ALREADY_Y_UP) {
-                        console.log("Converting Z-up to Y-up");
-                        // Rotate -90° around X-axis: Z-up → Y-up
-                        model.rotation.x = -Math.PI / 2;
-                    }
-                    
                     // Mirror for selfie view (face camera)
                     model.rotation.y = Math.PI;
-                    
-                    console.log("Coordinate conversion:", CONFIG.MODEL_ALREADY_Y_UP ? "Already Y-up" : "Z-up converted");
                     
                     // Optimize materials
                     model.traverse((child) => {
@@ -328,8 +313,6 @@
             };
             
             // ==================== POSITION ====================
-            // MediaPipe: [0,1] normalized, (0,0)=top-left, Y+ down
-            // Three.js: [-X, +X], Y+ up, -Z toward camera
             const targetPos = new THREE.Vector3(
                 (chest.x - 0.5) * 2.8 + CONFIG.HORIZONTAL_OFFSET,
                 -(chest.y - 0.4) * 2.8 + CONFIG.VERTICAL_OFFSET,
@@ -379,7 +362,7 @@
             const lean = (shoulder.z - hip.z) * 2;
             const pitch = Math.max(-Math.PI/5, Math.min(Math.PI/5, lean));
             
-            // Apply rotations in order: XYZ (pitch, yaw, roll)
+            // Apply rotations
             const targetRot = new THREE.Euler(pitch, yaw, -roll, 'XYZ');
             
             smoothedRot.x += (targetRot.x - smoothedRot.x) * CONFIG.ROTATION_SMOOTHING;
@@ -438,7 +421,7 @@
         // ==================== INIT ====================
         async function init() {
             try {
-                console.log("=== AR Armor (Coordinate-Fixed) ===");
+                console.log("=== AR Armor Try-On ===");
                 
                 if (!await initCamera()) return;
                 initThreeJS();
