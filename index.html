@@ -4,11 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AR Armor Try-On</title>
-    
-    <!-- Load MediaPipe via CDN - must load before the main script -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js" 
-            crossorigin="anonymous"></script>
-    
     <style>
         * {
             margin: 0;
@@ -17,10 +12,9 @@
         }
         
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: Arial, sans-serif;
             overflow: hidden;
             background: #000;
-            color: white;
         }
         
         #container {
@@ -61,131 +55,17 @@
             font-size: 14px;
             font-weight: 500;
             z-index: 10;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         
-        .ready { color: #00ff88; }
+        .ready { color: #00ff00; }
         .loading { color: #ffaa00; }
-        .error { color: #ff4444; }
-        
-        #controls {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 10;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .control-btn {
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            padding: 8px 15px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.3s;
-            backdrop-filter: blur(10px);
-        }
-        
-        .control-btn:hover {
-            background: rgba(50, 50, 50, 0.7);
-            border-color: rgba(255, 255, 255, 0.4);
-        }
-        
-        #debug {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 15px;
-            border-radius: 10px;
-            font-size: 12px;
-            font-family: monospace;
-            z-index: 100;
-            max-width: 300px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .debug-line {
-            margin-bottom: 5px;
-        }
-        
-        #title {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            text-align: center;
-            z-index: 10;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 20px;
-            border-radius: 10px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
-            background: linear-gradient(90deg, #ff8a00, #e52e71);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        
-        .subtitle {
-            font-size: 12px;
-            opacity: 0.7;
-        }
-        
-        .instructions {
-            position: absolute;
-            bottom: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            text-align: center;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 20px;
-            border-radius: 10px;
-            font-size: 14px;
-            z-index: 10;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
+        .error { color: #ff0000; }
     </style>
 </head>
 <body>
     <div id="container">
         <video id="video" autoplay playsinline muted></video>
         <canvas id="canvas3d"></canvas>
-        
-        <div id="title">
-            <h1>AR Armor Try-On</h1>
-            <div class="subtitle">Powered by MediaPipe & Three.js</div>
-        </div>
-        
-        <div id="controls">
-            <button class="control-btn" id="resetBtn">Reset Model</button>
-            <button class="control-btn" id="debugBtn">Toggle Debug</button>
-        </div>
-        
-        <div id="debug" style="display: none;">
-            <div class="debug-line" id="debugPos">Position: 0, 0, 0</div>
-            <div class="debug-line" id="debugRot">Rotation: 0°, 0°, 0°</div>
-            <div class="debug-line" id="debugScale">Scale: 1.0</div>
-            <div class="debug-line" id="debugLandmarks">Landmarks: 0</div>
-            <div class="debug-line" id="debugFPS">FPS: 0</div>
-        </div>
-        
-        <div class="instructions">
-            Stand in view and position yourself so your upper body is visible
-        </div>
-        
         <div id="status" class="loading">Initializing...</div>
     </div>
 
@@ -201,98 +81,54 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
         
-        // Wait for MediaPipe to load
-        function waitForMediaPipe() {
-            return new Promise((resolve, reject) => {
-                let attempts = 0;
-                const maxAttempts = 100; // 10 seconds max wait
-                
-                const checkMediaPipe = () => {
-                    if (window.FilesetResolver && window.PoseLandmarker) {
-                        console.log("✓ MediaPipe loaded successfully");
-                        resolve();
-                    } else if (attempts >= maxAttempts) {
-                        reject(new Error("MediaPipe failed to load after 10 seconds"));
-                    } else {
-                        attempts++;
-                        setTimeout(checkMediaPipe, 100);
-                    }
-                };
-                
-                checkMediaPipe();
-            });
-        }
-        
-        // Configuration
+        // ==================== CONFIGURATION ====================
         const CONFIG = {
-            // Model settings
             MODEL_PATH: './armour_bahubali.glb',
-            BASE_SCALE: 0.5,
-            MIN_SCALE: 0.3,
-            MAX_SCALE: 1.5,
             
-            // Position offsets
-            VERTICAL_OFFSET: -0.1,
-            HORIZONTAL_OFFSET: 0,
-            DEPTH_OFFSET: -0.3,
+            // Simple orientation - glTF +Y Up handles coordinate conversion
+            MIRROR_MODE: true,  // Flip model to face camera in selfie mode
             
-            // Smoothing factors (0-1, lower = smoother)
-            POSITION_SMOOTHING: 0.3,
-            ROTATION_SMOOTHING: 0.25,
-            SCALE_SMOOTHING: 0.2,
-            
-            // Detection settings
+            // Tracking quality
             MIN_VISIBILITY: 0.6,
             MIN_DETECTION_CONFIDENCE: 0.5,
             
-            // Debug
-            SHOW_DEBUG: false
+            // Smoothing (lower = smoother but more lag)
+            POSITION_SMOOTHING: 0.25,
+            ROTATION_SMOOTHING: 0.2,
+            SCALE_SMOOTHING: 0.15,
+            
+            // Scale adjustments
+            BASE_SCALE: 0.5,        // Adjust if armor appears too big/small
+            MIN_SCALE: 0.2,
+            MAX_SCALE: 1.2,
+            
+            // Model positioning offsets (fine-tune if needed)
+            VERTICAL_OFFSET: 0,     // Move up/down (positive = up)
+            HORIZONTAL_OFFSET: 0,   // Move left/right (positive = right)
+            DEPTH_OFFSET: -0.3      // Move forward/back (negative = toward camera)
         };
         
-        // Application state
-        const state = {
-            isCameraReady: false,
-            isPoseReady: false,
-            isModelReady: false,
-            isTracking: false,
-            debugMode: CONFIG.SHOW_DEBUG,
-            lastFrameTime: 0,
-            frameCount: 0,
-            fps: 0
-        };
-        
-        // DOM Elements
+        // ==================== GLOBALS ====================
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas3d');
         const statusDiv = document.getElementById('status');
-        const debugDiv = document.getElementById('debug');
-        const debugPos = document.getElementById('debugPos');
-        const debugRot = document.getElementById('debugRot');
-        const debugScale = document.getElementById('debugScale');
-        const debugLandmarks = document.getElementById('debugLandmarks');
-        const debugFPS = document.getElementById('debugFPS');
-        const resetBtn = document.getElementById('resetBtn');
-        const debugBtn = document.getElementById('debugBtn');
         
-        // Three.js variables
+        let poseLandmarker;
         let scene, camera, renderer;
         let armorModel;
-        
-        // MediaPipe variables
-        let poseLandmarker;
         let lastVideoTime = -1;
+        let isModelLoaded = false;
         
-        // Smoothing variables
-        let smoothedPosition = new THREE.Vector3(0, 0, 0);
-        let smoothedRotation = new THREE.Euler(0, 0, 0);
+        // Smoothing buffers
         let smoothedScale = CONFIG.BASE_SCALE;
+        let smoothedPos = new THREE.Vector3(0, 0, 0);
+        let smoothedRotation = new THREE.Euler(0, 0, 0);
         
-        // Initialize camera
+        // ==================== CAMERA SETUP ====================
         async function initCamera() {
             try {
-                updateStatus("Initializing camera...", "loading");
-                
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         width: { ideal: 1280 },
@@ -307,149 +143,21 @@
                 return new Promise((resolve) => {
                     video.onloadedmetadata = () => {
                         video.play();
-                        state.isCameraReady = true;
-                        updateStatus("Camera ready", "ready");
-                        console.log("✓ Camera initialized:", video.videoWidth, "x", video.videoHeight);
+                        console.log("✓ Camera ready:", video.videoWidth, 'x', video.videoHeight);
                         resolve(true);
                     };
                 });
             } catch (error) {
-                console.error("Camera initialization failed:", error);
-                updateStatus("Camera access denied", "error");
+                console.error("Camera error:", error);
+                statusDiv.textContent = "Camera access denied";
+                statusDiv.className = "error";
                 return false;
             }
         }
         
-        // Initialize Three.js
-        function initThreeJS() {
-            // Scene
-            scene = new THREE.Scene();
-            scene.background = null;
-            
-            // Camera
-            camera = new THREE.PerspectiveCamera(
-                60,
-                window.innerWidth / window.innerHeight,
-                0.1,
-                1000
-            );
-            camera.position.set(0, 0, 2);
-            
-            // Renderer
-            renderer = new THREE.WebGLRenderer({
-                canvas: canvas,
-                alpha: true,
-                antialias: true,
-                powerPreference: "high-performance"
-            });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.outputColorSpace = THREE.SRGBColorSpace;
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-            
-            // Lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-            scene.add(ambientLight);
-            
-            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight1.position.set(2, 3, 4);
-            directionalLight1.castShadow = true;
-            scene.add(directionalLight1);
-            
-            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
-            directionalLight2.position.set(-2, 1, -2);
-            scene.add(directionalLight2);
-            
-            console.log("✓ Three.js initialized");
-        }
-        
-        // Load armor model
-        function loadArmorModel() {
-            updateStatus("Loading armor model...", "loading");
-            
-            const loader = new GLTFLoader();
-            
-            loader.load(
-                CONFIG.MODEL_PATH,
-                (gltf) => {
-                    console.log("✓ Armor model loaded");
-                    
-                    const model = gltf.scene;
-                    
-                    // Log model structure for debugging
-                    model.traverse((child) => {
-                        if (child.isMesh) {
-                            child.castShadow = true;
-                            child.receiveShadow = true;
-                            
-                            // Ensure materials are double-sided
-                            if (child.material) {
-                                if (Array.isArray(child.material)) {
-                                    child.material.forEach(mat => {
-                                        mat.side = THREE.DoubleSide;
-                                    });
-                                } else {
-                                    child.material.side = THREE.DoubleSide;
-                                }
-                            }
-                        }
-                    });
-                    
-                    // Calculate model bounds and center it
-                    const box = new THREE.Box3().setFromObject(model);
-                    const center = box.getCenter(new THREE.Vector3());
-                    const size = box.getSize(new THREE.Vector3());
-                    
-                    console.log("Model dimensions:", {
-                        size: size.toArray().map(v => v.toFixed(2)),
-                        center: center.toArray().map(v => v.toFixed(2))
-                    });
-                    
-                    // Normalize model scale
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    const normalizeScale = 1.0 / maxDim;
-                    model.scale.setScalar(normalizeScale);
-                    
-                    // Center the model
-                    model.position.sub(center.multiplyScalar(normalizeScale));
-                    
-                    // Apply rotation to face camera (for selfie mode)
-                    model.rotation.y = Math.PI;
-                    
-                    // Create a group for the model to apply transformations
-                    const modelGroup = new THREE.Group();
-                    modelGroup.add(model);
-                    modelGroup.scale.setScalar(CONFIG.BASE_SCALE);
-                    
-                    scene.add(modelGroup);
-                    armorModel = modelGroup;
-                    armorModel.visible = false;
-                    
-                    state.isModelReady = true;
-                    updateStatus("Model loaded - Stand in view", "ready");
-                },
-                (progress) => {
-                    if (progress.total > 0) {
-                        const percent = Math.round((progress.loaded / progress.total) * 100);
-                        updateStatus(`Loading model: ${percent}%`, "loading");
-                    }
-                },
-                (error) => {
-                    console.error("Model loading failed:", error);
-                    updateStatus("Failed to load armor model", "error");
-                }
-            );
-        }
-        
-        // Initialize MediaPipe Pose Detection
+        // ==================== MEDIAPIPE POSE DETECTION ====================
         async function initPoseDetection() {
             try {
-                updateStatus("Loading pose detection...", "loading");
-                
-                // Access MediaPipe from window (loaded via script tag)
-                const { PoseLandmarker, FilesetResolver } = window;
-                
                 const vision = await FilesetResolver.forVisionTasks(
                     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
                 );
@@ -466,68 +174,179 @@
                     minTrackingConfidence: CONFIG.MIN_DETECTION_CONFIDENCE
                 });
                 
-                state.isPoseReady = true;
-                updateStatus("Pose detection ready", "ready");
-                console.log("✓ Pose detection initialized");
-                
+                console.log("✓ Pose detection ready");
                 return true;
             } catch (error) {
-                console.error("Pose detection initialization failed:", error);
-                updateStatus("Pose detection failed", "error");
+                console.error("Pose detection error:", error);
+                statusDiv.textContent = "Pose detection failed";
+                statusDiv.className = "error";
                 return false;
             }
         }
         
-        // Process pose detection
-        function processPose() {
-            if (!poseLandmarker || video.currentTime === lastVideoTime) {
-                requestAnimationFrame(processPose);
-                return;
-            }
+        // ==================== THREE.JS SETUP ====================
+        function initThreeJS() {
+            scene = new THREE.Scene();
             
-            lastVideoTime = video.currentTime;
+            // Camera matching video perspective
+            camera = new THREE.PerspectiveCamera(
+                63,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(0, 0, 2);
             
-            try {
-                const startTime = performance.now();
-                const results = poseLandmarker.detectForVideo(video, startTime);
-                
-                if (results.landmarks && results.landmarks.length > 0) {
-                    positionArmorOnBody(results.landmarks[0]);
-                    state.isTracking = true;
-                } else {
-                    if (armorModel) armorModel.visible = false;
-                    state.isTracking = false;
-                    updateStatus("No person detected", "loading");
-                }
-            } catch (error) {
-                console.error("Pose detection error:", error);
-            }
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: canvas,
+                alpha: true,
+                antialias: true,
+                powerPreference: "high-performance"
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000, 0);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
             
-            requestAnimationFrame(processPose);
+            // Enhanced lighting for armor materials
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+            
+            const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            keyLight.position.set(2, 2, 3);
+            scene.add(keyLight);
+            
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            fillLight.position.set(-2, 1, -1);
+            scene.add(fillLight);
+            
+            const backLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            backLight.position.set(0, -1, -2);
+            scene.add(backLight);
+            
+            console.log("✓ Three.js ready");
         }
         
-        // Position armor on body based on pose landmarks
-        function positionArmorOnBody(landmarks) {
-            if (!armorModel || !state.isModelReady) return;
+        // ==================== LOAD ARMOR MODEL ====================
+        function loadArmorModel() {
+            const loader = new GLTFLoader();
             
-            // Key landmarks for torso positioning
+            statusDiv.textContent = "Loading armor...";
+            statusDiv.className = "loading";
+            
+            loader.load(
+                CONFIG.MODEL_PATH,
+                (gltf) => {
+                    console.log("=== Model Loaded Successfully ===");
+                    
+                    const loadedModel = gltf.scene;
+                    
+                    // Log model structure
+                    let meshCount = 0;
+                    loadedModel.traverse((child) => {
+                        if (child.isMesh) {
+                            meshCount++;
+                            // Optimize rendering
+                            child.frustumCulled = false;
+                            child.castShadow = true;
+                            
+                            // Ensure materials render properly
+                            if (child.material) {
+                                if (Array.isArray(child.material)) {
+                                    child.material.forEach(mat => {
+                                        mat.side = THREE.DoubleSide;
+                                        mat.needsUpdate = true;
+                                    });
+                                } else {
+                                    child.material.side = THREE.DoubleSide;
+                                    child.material.needsUpdate = true;
+                                }
+                            }
+                        }
+                    });
+                    
+                    console.log(`Model contains ${meshCount} mesh(es)`);
+                    
+                    // Calculate bounds for proper scaling
+                    const box = new THREE.Box3().setFromObject(loadedModel);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    
+                    console.log("Model dimensions:", {
+                        size: size.toArray().map(v => v.toFixed(2)),
+                        center: center.toArray().map(v => v.toFixed(2))
+                    });
+                    
+                    // Normalize model size
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const normalizeScale = 1.0 / maxDim;
+                    loadedModel.scale.setScalar(normalizeScale);
+                    
+                    // Center the model at origin
+                    loadedModel.position.sub(center.multiplyScalar(normalizeScale));
+                    
+                    // CRITICAL: Only apply mirror flip if needed
+                    // glTF +Y Up export already handled Z-up to Y-up conversion
+                    if (CONFIG.MIRROR_MODE) {
+                        loadedModel.rotation.y = Math.PI; // 180° to face camera
+                    }
+                    
+                    // Create container for tracking transformations
+                    const modelGroup = new THREE.Group();
+                    modelGroup.add(loadedModel);
+                    modelGroup.scale.setScalar(CONFIG.BASE_SCALE);
+                    
+                    scene.add(modelGroup);
+                    armorModel = modelGroup;
+                    armorModel.visible = false;
+                    isModelLoaded = true;
+                    
+                    console.log("✓ Armor loaded and ready");
+                    console.log("Applied transformations:");
+                    console.log("  - Normalized scale:", normalizeScale.toFixed(3));
+                    console.log("  - Mirror mode:", CONFIG.MIRROR_MODE ? "ON (180° Y)" : "OFF");
+                    console.log("  - Base scale:", CONFIG.BASE_SCALE);
+                    
+                    statusDiv.textContent = "Ready - stand in view";
+                    statusDiv.className = "ready";
+                },
+                (progress) => {
+                    if (progress.total > 0) {
+                        const percent = Math.round((progress.loaded / progress.total) * 100);
+                        statusDiv.textContent = `Loading: ${percent}%`;
+                    }
+                },
+                (error) => {
+                    console.error("Model load error:", error);
+                    statusDiv.textContent = "Model load failed - check console";
+                    statusDiv.className = "error";
+                }
+            );
+        }
+        
+        // ==================== POSITION ARMOR ON BODY ====================
+        function positionArmorOnBody(landmarks) {
+            if (!armorModel || !isModelLoaded) return;
+            
+            // Key body landmarks
             const leftShoulder = landmarks[11];
             const rightShoulder = landmarks[12];
             const leftHip = landmarks[23];
             const rightHip = landmarks[24];
             const nose = landmarks[0];
             
-            // Check if key points are visible
+            // Visibility check - ensure key points are visible
             if (leftShoulder.visibility < CONFIG.MIN_VISIBILITY || 
                 rightShoulder.visibility < CONFIG.MIN_VISIBILITY ||
                 leftHip.visibility < CONFIG.MIN_VISIBILITY || 
                 rightHip.visibility < CONFIG.MIN_VISIBILITY) {
                 armorModel.visible = false;
-                updateStatus("Show your torso clearly", "loading");
+                statusDiv.textContent = "Show your torso clearly";
+                statusDiv.className = "loading";
                 return;
             }
             
-            // Calculate center points
+            // ==================== CALCULATE BODY CENTER POINTS ====================
             const shoulderCenter = {
                 x: (leftShoulder.x + rightShoulder.x) / 2,
                 y: (leftShoulder.y + rightShoulder.y) / 2,
@@ -540,180 +359,176 @@
                 z: (leftHip.z + rightHip.z) / 2
             };
             
-            // Calculate chest position (weighted average)
-            const chestX = shoulderCenter.x * 0.7 + hipCenter.x * 0.3;
-            const chestY = shoulderCenter.y * 0.7 + hipCenter.y * 0.3;
-            const chestZ = shoulderCenter.z * 0.7 + hipCenter.z * 0.3;
+            // Chest anchor point (weighted toward shoulders for chest armor)
+            const chestX = shoulderCenter.x * 0.6 + hipCenter.x * 0.4;
+            const chestY = shoulderCenter.y * 0.6 + hipCenter.y * 0.4;
+            const chestZ = shoulderCenter.z * 0.6 + hipCenter.z * 0.4;
             
-            // Convert to Three.js coordinates
-            const targetPosition = new THREE.Vector3(
-                (chestX - 0.5) * 2.5 + CONFIG.HORIZONTAL_OFFSET,
-                -(chestY - 0.5) * 2.5 + CONFIG.VERTICAL_OFFSET,
-                -chestZ * 2.0 + CONFIG.DEPTH_OFFSET
+            // ==================== POSITION ====================
+            // Convert MediaPipe normalized coordinates to Three.js world space
+            const targetPos = new THREE.Vector3(
+                (chestX - 0.5) * 2.8 + CONFIG.HORIZONTAL_OFFSET,
+                -(chestY - 0.4) * 2.8 + CONFIG.VERTICAL_OFFSET,
+                -chestZ * 2.5 + CONFIG.DEPTH_OFFSET
             );
             
-            // Apply smoothing to position
-            smoothedPosition.lerp(targetPosition, CONFIG.POSITION_SMOOTHING);
-            armorModel.position.copy(smoothedPosition);
+            // Apply smooth interpolation for stable tracking
+            smoothedPos.lerp(targetPos, CONFIG.POSITION_SMOOTHING);
+            armorModel.position.copy(smoothedPos);
             
-            // Calculate scale based on shoulder distance and depth
-            const shoulderDistance = Math.sqrt(
+            // ==================== SCALE ====================
+            // Calculate body dimensions for distance estimation
+            const shoulderWidth = Math.sqrt(
                 Math.pow(rightShoulder.x - leftShoulder.x, 2) +
                 Math.pow(rightShoulder.y - leftShoulder.y, 2)
             );
             
-            const depthScale = Math.max(0.5, Math.min(2.0, 1.5 - Math.abs(nose.z)));
-            let targetScale = shoulderDistance * 5 * depthScale * CONFIG.BASE_SCALE;
+            const torsoHeight = Math.sqrt(
+                Math.pow(shoulderCenter.x - hipCenter.x, 2) +
+                Math.pow(shoulderCenter.y - hipCenter.y, 2)
+            );
+            
+            // Use nose depth as distance indicator
+            const depthValue = Math.max(0.05, Math.abs(nose.z));
+            const depthScale = Math.max(0.4, Math.min(3, 1 / depthValue));
+            
+            // Combined scale calculation
+            const bodyScale = (shoulderWidth * 0.7 + torsoHeight * 0.3) * 6;
+            let targetScale = bodyScale * depthScale * CONFIG.BASE_SCALE;
+            
+            // Clamp scale to prevent extreme sizes
             targetScale = Math.max(CONFIG.MIN_SCALE, Math.min(CONFIG.MAX_SCALE, targetScale));
             
-            // Apply smoothing to scale
+            // Smooth scale transitions
             smoothedScale += (targetScale - smoothedScale) * CONFIG.SCALE_SMOOTHING;
             armorModel.scale.setScalar(smoothedScale);
             
-            // Calculate rotation based on body orientation
+            // ==================== ROTATION ====================
+            // Shoulder tilt (Z-axis roll - side lean)
             const shoulderTilt = Math.atan2(
                 rightShoulder.y - leftShoulder.y,
                 rightShoulder.x - leftShoulder.x
             );
             
-            // Body turn (yaw)
+            // Body turn (Y-axis yaw - left/right rotation)
             const depthDiff = rightShoulder.z - leftShoulder.z;
             const shoulderSpan = Math.abs(rightShoulder.x - leftShoulder.x);
             let bodyTurn = 0;
             if (shoulderSpan > 0.08) {
-                bodyTurn = Math.atan2(depthDiff, shoulderSpan) * 0.5;
-                bodyTurn = Math.max(-Math.PI/4, Math.min(Math.PI/4, bodyTurn));
+                bodyTurn = Math.atan2(depthDiff, shoulderSpan);
+                bodyTurn = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, bodyTurn));
             }
             
-            // Forward/backward lean (pitch)
-            const leanAngle = (shoulderCenter.z - hipCenter.z) * 1.5;
-            const clampedLean = Math.max(-Math.PI/6, Math.min(Math.PI/6, leanAngle));
+            // Forward lean (X-axis pitch - forward/backward tilt)
+            const leanAngle = (shoulderCenter.z - hipCenter.z) * 2;
+            const clampedLean = Math.max(-Math.PI / 5, Math.min(Math.PI / 5, leanAngle));
             
             // Target rotation
             const targetRotation = new THREE.Euler(
-                clampedLean,        // X - pitch (forward/backward lean)
-                bodyTurn,           // Y - yaw (left/right turn)
-                -shoulderTilt       // Z - roll (side lean)
+                clampedLean,        // X - pitch (lean forward/back)
+                bodyTurn,           // Y - yaw (turn left/right)
+                -shoulderTilt       // Z - roll (lean side to side, inverted for mirror)
             );
             
-            // Apply smoothing to rotation
+            // Smooth rotation for natural movement
             smoothedRotation.x += (targetRotation.x - smoothedRotation.x) * CONFIG.ROTATION_SMOOTHING;
             smoothedRotation.y += (targetRotation.y - smoothedRotation.y) * CONFIG.ROTATION_SMOOTHING;
             smoothedRotation.z += (targetRotation.z - smoothedRotation.z) * CONFIG.ROTATION_SMOOTHING;
             
             armorModel.rotation.copy(smoothedRotation);
             
-            // Make model visible and update status
+            // Show model and update status
             armorModel.visible = true;
-            updateStatus(`Tracking - Scale: ${smoothedScale.toFixed(2)}`, "ready");
-            
-            // Update debug info if enabled
-            if (state.debugMode) {
-                updateDebugInfo();
+            statusDiv.textContent = `⚔️ Tracking | Scale: ${smoothedScale.toFixed(2)}`;
+            statusDiv.className = "ready";
+        }
+        
+        // ==================== POSE PROCESSING LOOP ====================
+        function processPose() {
+            if (!poseLandmarker || video.currentTime === lastVideoTime) {
+                requestAnimationFrame(processPose);
+                return;
             }
-        }
-        
-        // Update debug information
-        function updateDebugInfo() {
-            debugPos.textContent = `Position: ${smoothedPosition.x.toFixed(2)}, ${smoothedPosition.y.toFixed(2)}, ${smoothedPosition.z.toFixed(2)}`;
-            debugRot.textContent = `Rotation: ${THREE.MathUtils.radToDeg(smoothedRotation.x).toFixed(1)}°, ${THREE.MathUtils.radToDeg(smoothedRotation.y).toFixed(1)}°, ${THREE.MathUtils.radToDeg(smoothedRotation.z).toFixed(1)}°`;
-            debugScale.textContent = `Scale: ${smoothedScale.toFixed(2)}`;
-            debugLandmarks.textContent = `Tracking: ${state.isTracking ? 'YES' : 'NO'}`;
-            debugFPS.textContent = `FPS: ${state.fps}`;
-        }
-        
-        // Update status display
-        function updateStatus(message, type) {
-            statusDiv.textContent = message;
-            statusDiv.className = type;
-        }
-        
-        // Calculate FPS
-        function calculateFPS() {
-            state.frameCount++;
-            const now = performance.now();
+            lastVideoTime = video.currentTime;
             
-            if (now >= state.lastFrameTime + 1000) {
-                state.fps = Math.round((state.frameCount * 1000) / (now - state.lastFrameTime));
-                state.frameCount = 0;
-                state.lastFrameTime = now;
+            try {
+                const startTime = performance.now();
+                const results = poseLandmarker.detectForVideo(video, startTime);
+                
+                if (results.landmarks && results.landmarks.length > 0) {
+                    positionArmorOnBody(results.landmarks[0]);
+                } else {
+                    if (armorModel) armorModel.visible = false;
+                    statusDiv.textContent = "No person detected";
+                    statusDiv.className = "loading";
+                }
+            } catch (error) {
+                console.error("Detection error:", error);
             }
+            
+            requestAnimationFrame(processPose);
         }
         
-        // Animation loop
+        // ==================== RENDER LOOP ====================
         function animate() {
             requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-            calculateFPS();
-        }
-        
-        // Reset model position
-        function resetModel() {
-            smoothedPosition.set(0, 0, 0);
-            smoothedRotation.set(0, 0, 0);
-            smoothedScale = CONFIG.BASE_SCALE;
-            
-            if (armorModel) {
-                armorModel.position.copy(smoothedPosition);
-                armorModel.rotation.copy(smoothedRotation);
-                armorModel.scale.setScalar(smoothedScale);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
             }
         }
         
-        // Toggle debug display
-        function toggleDebug() {
-            state.debugMode = !state.debugMode;
-            debugDiv.style.display = state.debugMode ? 'block' : 'none';
-        }
-        
-        // Handle window resize
-        function handleResize() {
+        // ==================== WINDOW RESIZE ====================
+        window.addEventListener('resize', () => {
             if (camera && renderer) {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
             }
-        }
+        });
         
-        // Initialize the application
+        // ==================== INITIALIZATION ====================
         async function init() {
             try {
                 console.log("=== AR Armor Try-On Initialization ===");
                 
-                // Wait for MediaPipe to load
-                updateStatus("Loading MediaPipe...", "loading");
-                await waitForMediaPipe();
+                statusDiv.textContent = "Starting camera...";
+                const cameraOk = await initCamera();
+                if (!cameraOk) return;
                 
-                // Initialize components
-                await initCamera();
+                statusDiv.textContent = "Initializing 3D renderer...";
                 initThreeJS();
-                await initPoseDetection();
+                
+                statusDiv.textContent = "Loading AI pose detection...";
+                const poseOk = await initPoseDetection();
+                if (!poseOk) return;
+                
+                statusDiv.textContent = "Loading 3D model...";
                 loadArmorModel();
                 
-                // Start animation and pose detection
+                // Start render and pose loops
                 animate();
                 
-                // Delay pose processing to ensure everything is ready
+                // Delay pose processing to ensure video is stable
                 setTimeout(() => {
-                    console.log("Starting pose detection");
+                    console.log("Starting pose detection loop");
                     processPose();
-                }, 1000);
-                
-                // Set up event listeners
-                window.addEventListener('resize', handleResize);
-                resetBtn.addEventListener('click', resetModel);
-                debugBtn.addEventListener('click', toggleDebug);
-                
-                console.log("✓ Application initialized successfully");
+                }, 2000);
                 
             } catch (error) {
                 console.error("Initialization error:", error);
-                updateStatus(`Initialization failed: ${error.message}`, "error");
+                statusDiv.textContent = `Error: ${error.message}`;
+                statusDiv.className = "error";
             }
         }
         
-        // Start the application when the page loads
-        window.addEventListener('load', init);
+        // ==================== START APPLICATION ====================
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
     </script>
 </body>
 </html>
+
+
