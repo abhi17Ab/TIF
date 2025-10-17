@@ -227,7 +227,8 @@
                     model.scale.setScalar(1 / maxDim);
                     model.position.sub(center.multiplyScalar(1 / maxDim));
                     
-                    // NO rotation applied to model - keep it clean!
+                    // Rotate 180° around Z-axis
+                    model.rotation.z = Math.PI;
                     
                     // Optimize materials
                     model.traverse((child) => {
@@ -246,7 +247,7 @@
                     armorModel.visible = false;
                     isModelLoaded = true;
                     
-                    console.log("✓ Armor ready (no pre-rotation)");
+                    console.log("✓ Armor ready (180° Z-rotation)");
                     statusDiv.textContent = "Ready";
                     statusDiv.className = "ready";
                 },
@@ -335,7 +336,7 @@
             smoothedScale += (targetScale - smoothedScale) * CONFIG.SCALE_SMOOTHING;
             armorModel.scale.setScalar(smoothedScale);
             
-            // ==================== ROTATION (SIMPLIFIED) ====================
+            // ==================== ROTATION ====================
             // Y-axis rotation (turning left/right)
             const depthDiff = R_SHOULDER.z - L_SHOULDER.z;
             const span = Math.abs(R_SHOULDER.x - L_SHOULDER.x);
@@ -355,7 +356,7 @@
                 R_SHOULDER.x - L_SHOULDER.x
             );
             
-            // Direct rotation - no pre-rotation complications
+            // Direct rotation
             const targetRot = new THREE.Euler(pitch, yaw, -roll, 'XYZ');
             
             smoothedRot.x += (targetRot.x - smoothedRot.x) * CONFIG.ROTATION_SMOOTHING;
@@ -414,7 +415,7 @@
         // ==================== INIT ====================
         async function init() {
             try {
-                console.log("=== AR Armor Try-On (Simplified) ===");
+                console.log("=== AR Armor Try-On ===");
                 
                 if (!await initCamera()) return;
                 initThreeJS();
