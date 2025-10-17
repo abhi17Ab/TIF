@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AR Armor Try-On</title>
+    
+    <!-- Load MediaPipe via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js" crossorigin="anonymous"></script>
+    
     <style>
         * {
             margin: 0;
@@ -196,7 +200,9 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+        
+        // Access MediaPipe from global scope (loaded via script tag)
+        const { PoseLandmarker, FilesetResolver } = window;
         
         // Configuration
         const CONFIG = {
@@ -650,6 +656,11 @@
         async function init() {
             try {
                 console.log("=== AR Armor Try-On Initialization ===");
+                
+                // Check if MediaPipe is loaded
+                if (!PoseLandmarker || !FilesetResolver) {
+                    throw new Error("MediaPipe not loaded. Make sure vision_bundle.js is loaded in the <head> tag.");
+                }
                 
                 // Initialize components
                 await initCamera();
