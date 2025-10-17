@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Armor Try-On</title>
+    <title>AR Armor Try-On - FIXED</title>
     <style>
         * {
             margin: 0;
@@ -216,7 +216,6 @@
                     
                     const model = gltf.scene;
                     
-                    // Normalize to unit size
                     const box = new THREE.Box3().setFromObject(model);
                     const center = box.getCenter(new THREE.Vector3());
                     const size = box.getSize(new THREE.Vector3());
@@ -227,10 +226,9 @@
                     model.scale.setScalar(1 / maxDim);
                     model.position.sub(center.multiplyScalar(1 / maxDim));
                     
-                    // Rotate 180° around Z-axis
+                    // 180° Z-rotation
                     model.rotation.z = Math.PI;
                     
-                    // Optimize materials
                     model.traverse((child) => {
                         if (child.isMesh && child.material) {
                             const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -247,7 +245,7 @@
                     armorModel.visible = false;
                     isModelLoaded = true;
                     
-                    console.log("✓ Armor ready (180° Z-rotation)");
+                    console.log("✓ Armor ready");
                     statusDiv.textContent = "Ready";
                     statusDiv.className = "ready";
                 },
@@ -275,7 +273,6 @@
             const R_HIP = landmarks[24];
             const NOSE = landmarks[0];
             
-            // Visibility check
             if (L_SHOULDER.visibility < CONFIG.MIN_VISIBILITY || 
                 R_SHOULDER.visibility < CONFIG.MIN_VISIBILITY ||
                 L_HIP.visibility < CONFIG.MIN_VISIBILITY || 
@@ -299,7 +296,6 @@
                 z: (L_HIP.z + R_HIP.z) / 2
             };
             
-            // Chest position
             const chest = {
                 x: shoulder.x * 0.6 + hip.x * 0.4,
                 y: shoulder.y * 0.6 + hip.y * 0.4,
@@ -307,9 +303,11 @@
             };
             
             // ==================== POSITION ====================
+            // MediaPipe: (0,0) top-left, Y+ down
+            // Three.js: center origin, Y+ up
             const targetPos = new THREE.Vector3(
                 (chest.x - 0.5) * 2.8 + CONFIG.HORIZONTAL_OFFSET,
-                -(chest.y - 0.4) * 2.8 + CONFIG.VERTICAL_OFFSET,
+                -(chest.y - 0.4) * 2.8 + CONFIG.VERTICAL_OFFSET,  // Flip Y
                 -chest.z * 2.5 + CONFIG.DEPTH_OFFSET
             );
             
@@ -336,28 +334,38 @@
             smoothedScale += (targetScale - smoothedScale) * CONFIG.SCALE_SMOOTHING;
             armorModel.scale.setScalar(smoothedScale);
             
-            // ==================== ROTATION ====================
-            // Y-axis rotation (turning left/right)
+            // ==================== ROTATION (COORDINATE-CORRECTED!) ====================
+            
+            // ROLL (Z-axis): Shoulder tilt
+            // MediaPipe Y is DOWN, so we need to INVERT the calculation
+            const roll = Math.atan2(
+                R_SHOULDER.y - L_SHOULDER.y,  // This is in MediaPipe coords (Y-down)
+                R_SHOULDER.x - L_SHOULDER.x
+            );
+            // When Y-axis is flipped, roll direction is also flipped
+            
+            // YAW (Y-axis): Body turn left/right
+            // Z-depth difference between shoulders indicates rotation
             const depthDiff = R_SHOULDER.z - L_SHOULDER.z;
             const span = Math.abs(R_SHOULDER.x - L_SHOULDER.x);
             let yaw = 0;
             if (span > 0.08) {
-                yaw = Math.atan2(depthDiff, span);
+                // Turning right → right shoulder goes back (positive Z)
+                yaw = -Math.atan2(depthDiff, span);  // Negative for correct direction
                 yaw = Math.max(-Math.PI/3, Math.min(Math.PI/3, yaw));
             }
             
-            // X-axis rotation (leaning forward/backward)
+            // PITCH (X-axis): Forward/backward lean
+            // Shoulder-hip Z difference indicates lean
             const lean = (shoulder.z - hip.z) * 2;
             const pitch = Math.max(-Math.PI/5, Math.min(Math.PI/5, lean));
             
-            // Z-axis rotation (tilting left/right)
-            const roll = Math.atan2(
-                R_SHOULDER.y - L_SHOULDER.y,
-                R_SHOULDER.x - L_SHOULDER.x
+            // Apply rotations with coordinate system corrections
+            const targetRot = new THREE.Euler(
+                pitch,      // X-axis: lean forward/back (stays same)
+                yaw,        // Y-axis: turn left/right (negated)
+                roll        // Z-axis: tilt (inverted due to Y-flip)
             );
-            
-            // Direct rotation
-            const targetRot = new THREE.Euler(pitch, yaw, -roll, 'XYZ');
             
             smoothedRot.x += (targetRot.x - smoothedRot.x) * CONFIG.ROTATION_SMOOTHING;
             smoothedRot.y += (targetRot.y - smoothedRot.y) * CONFIG.ROTATION_SMOOTHING;
@@ -415,7 +423,7 @@
         // ==================== INIT ====================
         async function init() {
             try {
-                console.log("=== AR Armor Try-On ===");
+                console.log("=== AR Armor Try-On (COORDINATE-FIXED) ===");
                 
                 if (!await initCamera()) return;
                 initThreeJS();
