@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Armor Try-On</title>
+    <title>AR Armor Try-On - Enhanced</title>
     <style>
         * {
             margin: 0;
@@ -54,6 +54,21 @@
             color: white;
             font-size: 14px;
             font-weight: 500;
+            z-index: 10;
+        }
+        
+        #debug {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 11px;
+            max-width: 200px;
+            display: none;
         }
         
         .ready { color: #00ff00; }
@@ -63,9 +78,10 @@
 </head>
 <body>
     <div id="container">
-        <video id="video" autoplay playsinline></video>
+        <video id="video" autoplay playsinline muted></video>
         <canvas id="canvas3d"></canvas>
         <div id="status" class="loading">Initializing...</div>
+        <div id="debug"></div>
     </div>
 
     <script type="importmap">
@@ -83,26 +99,75 @@
         import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
         
         // ==================== CONFIGURATION ====================
-        const MODEL_PATH = './armour_bahubali.glb';
+        const CONFIG = {
+            MODEL_PATH: './armour_bahubali.glb',
+            DEBUG_MODE: true, // Toggle to see bone mapping info
+            USE_RIGIFY_BONES: true, // Set false if model has no armature
+            
+            // Tracking thresholds
+            MIN_VISIBILITY: 0.6,
+            MIN_DETECTION_CONFIDENCE: 0.5,
+            
+            // Smoothing factors (0-1, lower = smoother but more lag)
+            POSITION_SMOOTHING: 0.25,
+            ROTATION_SMOOTHING: 0.2,
+            SCALE_SMOOTHING: 0.15,
+            BONE_SMOOTHING: 0.3,
+            
+            // Scale adjustments
+            BASE_SCALE: 0.5, // Adjust based on your model size
+            MIN_SCALE: 0.2,
+            MAX_SCALE: 1.2
+        };
         
         // ==================== GLOBALS ====================
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas3d');
         const statusDiv = document.getElementById('status');
+        const debugDiv = document.getElementById('debug');
         
         let poseLandmarker;
         let scene, camera, renderer;
-        let armorModel;
+        let armorModel, armorMixer, armorBones = {};
         let lastVideoTime = -1;
         let isModelLoaded = false;
+        let hasRigifyArmature = false;
         
-        // Smoothing
-        let smoothedScale = 0.3;
-        let smoothedPosX = 0;
-        let smoothedPosY = 0;
-        let smoothedPosZ = 0;
-        const POSITION_SMOOTHING = 0.3;
-        const SCALE_SMOOTHING = 0.2;
+        // Smoothing buffers
+        let smoothedScale = CONFIG.BASE_SCALE;
+        let smoothedPos = new THREE.Vector3(0, 0, 0);
+        let smoothedRotation = new THREE.Euler(0, 0, 0);
+        let boneRotations = {};
+        
+        // ==================== RIGIFY BONE MAPPING ====================
+        // Maps MediaPipe landmarks to common Rigify bone names
+        const RIGIFY_BONE_MAP = {
+            // Spine and torso
+            'spine': { landmarks: [11, 12, 23, 24], weight: 'center' },
+            'spine.001': { landmarks: [11, 12], weight: 'shoulders' },
+            'spine.002': { landmarks: [11, 12], weight: 'upper' },
+            'spine.003': { landmarks: [11, 12], weight: 'chest' },
+            
+            // Shoulders
+            'shoulder.L': { landmarks: [11, 13], weight: 'left' },
+            'shoulder.R': { landmarks: [12, 14], weight: 'right' },
+            
+            // Upper arms
+            'upper_arm.L': { landmarks: [11, 13], weight: 'left' },
+            'upper_arm.R': { landmarks: [12, 14], weight: 'right' },
+            
+            // Lower arms
+            'forearm.L': { landmarks: [13, 15], weight: 'left' },
+            'forearm.R': { landmarks: [14, 16], weight: 'right' },
+            
+            // Hips
+            'thigh.L': { landmarks: [23, 25], weight: 'left' },
+            'thigh.R': { landmarks: [24, 26], weight: 'right' },
+            
+            // Neck and head
+            'neck': { landmarks: [0, 11, 12], weight: 'neck' },
+            'head': { landmarks: [0], weight: 'head' }
+        };
         
         // ==================== CAMERA SETUP ====================
         async function initCamera() {
@@ -121,7 +186,7 @@
                 return new Promise((resolve) => {
                     video.onloadedmetadata = () => {
                         video.play();
-                        console.log("✓ Camera ready");
+                        console.log("✓ Camera ready:", video.videoWidth, 'x', video.videoHeight);
                         resolve(true);
                     };
                 });
@@ -147,9 +212,9 @@
                     },
                     runningMode: "VIDEO",
                     numPoses: 1,
-                    minPoseDetectionConfidence: 0.5,
-                    minPosePresenceConfidence: 0.5,
-                    minTrackingConfidence: 0.5
+                    minPoseDetectionConfidence: CONFIG.MIN_DETECTION_CONFIDENCE,
+                    minPosePresenceConfidence: CONFIG.MIN_DETECTION_CONFIDENCE,
+                    minTrackingConfidence: CONFIG.MIN_DETECTION_CONFIDENCE
                 });
                 
                 console.log("✓ Pose detection ready");
@@ -166,41 +231,72 @@
         function initThreeJS() {
             scene = new THREE.Scene();
             
-            // Camera setup to match video perspective
-            camera = new THREE.PerspectiveCamera(
-                63,
-                window.innerWidth / window.innerHeight,
-                0.1,
-                1000
-            );
+            // Camera setup matching video FOV
+            const aspect = window.innerWidth / window.innerHeight;
+            camera = new THREE.PerspectiveCamera(63, aspect, 0.1, 1000);
             camera.position.set(0, 0, 2);
             camera.lookAt(0, 0, 0);
             
             renderer = new THREE.WebGLRenderer({ 
                 canvas: canvas,
                 alpha: true,
-                antialias: true 
+                antialias: true,
+                powerPreference: "high-performance"
             });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setClearColor(0x000000, 0);
-            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
             
-            // Lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+            // Enhanced lighting for armor materials
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
             scene.add(ambientLight);
             
-            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.6);
-            directionalLight1.position.set(1, 1, 1);
-            scene.add(directionalLight1);
+            const keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            keyLight.position.set(2, 2, 3);
+            scene.add(keyLight);
             
-            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
-            directionalLight2.position.set(-1, 0.5, -0.5);
-            scene.add(directionalLight2);
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            fillLight.position.set(-2, 1, -1);
+            scene.add(fillLight);
+            
+            const backLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            backLight.position.set(0, -1, -2);
+            scene.add(backLight);
             
             console.log("✓ Three.js ready");
+            
+            if (CONFIG.DEBUG_MODE) {
+                debugDiv.style.display = 'block';
+                // Add axes helper
+                const axesHelper = new THREE.AxesHelper(1);
+                scene.add(axesHelper);
+            }
         }
         
-        // ==================== LOAD ARMOR MODEL WITH BLENDER FIXES ====================
+        // ==================== FIND BONES IN RIGIFY ARMATURE ====================
+        function findRigifyBones(object) {
+            const bones = {};
+            
+            object.traverse((child) => {
+                if (child.isBone) {
+                    const boneName = child.name.toLowerCase();
+                    
+                    // Check against known Rigify patterns
+                    for (const [key, value] of Object.entries(RIGIFY_BONE_MAP)) {
+                        if (boneName.includes(key.toLowerCase()) || 
+                            boneName === key) {
+                            bones[key] = child;
+                            console.log(`Found bone: ${key} -> ${child.name}`);
+                        }
+                    }
+                }
+            });
+            
+            return bones;
+        }
+        
+        // ==================== LOAD ARMOR MODEL ====================
         function loadArmorModel() {
             const loader = new GLTFLoader();
             
@@ -208,43 +304,77 @@
             statusDiv.className = "loading";
             
             loader.load(
-                MODEL_PATH,
+                CONFIG.MODEL_PATH,
                 (gltf) => {
                     const loadedModel = gltf.scene;
                     
-                    // Calculate bounding box for proper scaling
+                    console.log("Model loaded:", gltf);
+                    
+                    // Check for armature and animations
+                    hasRigifyArmature = false;
+                    loadedModel.traverse((child) => {
+                        if (child.isSkinnedMesh) {
+                            console.log("Found skinned mesh:", child.name);
+                            hasRigifyArmature = true;
+                        }
+                        if (child.isMesh) {
+                            // Ensure materials render properly
+                            child.frustumCulled = false;
+                            if (child.material) {
+                                child.material.side = THREE.DoubleSide;
+                                child.material.needsUpdate = true;
+                            }
+                        }
+                    });
+                    
+                    // Find and store bones if Rigify armature exists
+                    if (hasRigifyArmature && CONFIG.USE_RIGIFY_BONES) {
+                        armorBones = findRigifyBones(loadedModel);
+                        console.log("Rigify bones found:", Object.keys(armorBones).length);
+                        
+                        // Initialize bone rotation smoothing
+                        Object.keys(armorBones).forEach(boneName => {
+                            boneRotations[boneName] = new THREE.Euler(0, 0, 0);
+                        });
+                    }
+                    
+                    // Calculate proper bounds and center
                     const box = new THREE.Box3().setFromObject(loadedModel);
                     const center = box.getCenter(new THREE.Vector3());
                     const size = box.getSize(new THREE.Vector3());
                     
-                    // Normalize model size - adjust this factor based on your model
+                    console.log("Model bounds:", {
+                        center: center.toArray(),
+                        size: size.toArray()
+                    });
+                    
+                    // Normalize size
                     const maxDim = Math.max(size.x, size.y, size.z);
-                    const scaleFactor = 0.8 / maxDim;
+                    const normalizeScale = 1.0 / maxDim;
+                    loadedModel.scale.setScalar(normalizeScale);
                     
-                    // Apply scale and center the model
-                    loadedModel.scale.setScalar(scaleFactor);
-                    loadedModel.position.sub(center.multiplyScalar(scaleFactor));
+                    // Center the model
+                    loadedModel.position.sub(center.multiplyScalar(normalizeScale));
                     
-                    // FIX: Apply comprehensive Blender-to-Three.js coordinate correction
-                    // This handles the coordinate system differences
-                    loadedModel.rotation.x = 0;  // Reset X rotation
-                    loadedModel.rotation.y = Math.PI; // Face forward in mirrored space
-                    loadedModel.rotation.z = 0;  // Reset Z rotation
+                    // CRITICAL: Fix Blender to Three.js coordinate mismatch
+                    // Blender uses Z-up, Three.js uses Y-up
+                    loadedModel.rotation.x = 0;
+                    loadedModel.rotation.y = Math.PI; // Face camera in mirrored view
+                    loadedModel.rotation.z = 0;
                     
-                    // Update matrix to apply transformations
-                    loadedModel.updateMatrixWorld(true);
-                    
-                    // Create parent group for better control
+                    // Create container group
                     const modelGroup = new THREE.Group();
                     modelGroup.add(loadedModel);
+                    modelGroup.scale.setScalar(CONFIG.BASE_SCALE);
                     scene.add(modelGroup);
                     
                     armorModel = modelGroup;
                     armorModel.visible = false;
                     isModelLoaded = true;
                     
-                    console.log("✓ Armor loaded with Blender fixes");
-                    console.log("Model bounds:", { center, size, scaleFactor });
+                    console.log("✓ Armor loaded successfully");
+                    console.log("Has Rigify armature:", hasRigifyArmature);
+                    
                     statusDiv.textContent = "Ready - stand in view";
                     statusDiv.className = "ready";
                 },
@@ -256,126 +386,192 @@
                 },
                 (error) => {
                     console.error("Model load error:", error);
-                    statusDiv.textContent = "Model load failed";
+                    statusDiv.textContent = "Model load failed - check console";
                     statusDiv.className = "error";
                 }
             );
         }
         
-        // ==================== IMPROVED POSE TRACKING ====================
+        // ==================== CALCULATE BONE ROTATION FROM LANDMARKS ====================
+        function calculateBoneRotation(startLandmark, endLandmark) {
+            const dx = endLandmark.x - startLandmark.x;
+            const dy = endLandmark.y - startLandmark.y;
+            const dz = endLandmark.z - startLandmark.z;
+            
+            const rotationY = Math.atan2(dx, dz);
+            const rotationX = Math.atan2(-dy, Math.sqrt(dx * dx + dz * dz));
+            
+            return new THREE.Euler(rotationX, rotationY, 0, 'XYZ');
+        }
+        
+        // ==================== UPDATE RIGIFY BONES ====================
+        function updateRigifyBones(landmarks) {
+            if (!hasRigifyArmature || Object.keys(armorBones).length === 0) return;
+            
+            for (const [boneName, bone] of Object.entries(armorBones)) {
+                const mapping = RIGIFY_BONE_MAP[boneName];
+                if (!mapping || !mapping.landmarks) continue;
+                
+                const landmarkIndices = mapping.landmarks;
+                if (landmarkIndices.length < 2) continue;
+                
+                const startLandmark = landmarks[landmarkIndices[0]];
+                const endLandmark = landmarks[landmarkIndices[1]];
+                
+                if (startLandmark.visibility < CONFIG.MIN_VISIBILITY || 
+                    endLandmark.visibility < CONFIG.MIN_VISIBILITY) continue;
+                
+                // Calculate target rotation
+                const targetRotation = calculateBoneRotation(startLandmark, endLandmark);
+                
+                // Smooth rotation
+                if (!boneRotations[boneName]) {
+                    boneRotations[boneName] = new THREE.Euler().copy(targetRotation);
+                }
+                
+                boneRotations[boneName].x += (targetRotation.x - boneRotations[boneName].x) * CONFIG.BONE_SMOOTHING;
+                boneRotations[boneName].y += (targetRotation.y - boneRotations[boneName].y) * CONFIG.BONE_SMOOTHING;
+                boneRotations[boneName].z += (targetRotation.z - boneRotations[boneName].z) * CONFIG.BONE_SMOOTHING;
+                
+                // Apply rotation to bone
+                bone.rotation.copy(boneRotations[boneName]);
+            }
+        }
+        
+        // ==================== POSITION ARMOR ON BODY ====================
         function positionArmorOnBody(landmarks) {
             if (!armorModel || !isModelLoaded) return;
             
-            // Key landmarks for torso tracking
+            // Key body landmarks
             const leftShoulder = landmarks[11];
             const rightShoulder = landmarks[12];
             const leftHip = landmarks[23];
             const rightHip = landmarks[24];
             const nose = landmarks[0];
             
-            // Visibility check - ensure key points are visible
-            const minVisibility = 0.5;
-            if (leftShoulder.visibility < minVisibility || 
-                rightShoulder.visibility < minVisibility ||
-                leftHip.visibility < minVisibility || 
-                rightHip.visibility < minVisibility) {
+            // Visibility check
+            if (leftShoulder.visibility < CONFIG.MIN_VISIBILITY || 
+                rightShoulder.visibility < CONFIG.MIN_VISIBILITY ||
+                leftHip.visibility < CONFIG.MIN_VISIBILITY || 
+                rightHip.visibility < CONFIG.MIN_VISIBILITY) {
                 armorModel.visible = false;
                 statusDiv.textContent = "Show your torso clearly";
                 statusDiv.className = "loading";
                 return;
             }
             
-            // ==================== POSITION CALCULATION ====================
-            // Calculate body center points
-            const shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2;
-            const shoulderCenterY = (leftShoulder.y + rightShoulder.y) / 2;
-            const shoulderCenterZ = (leftShoulder.z + rightShoulder.z) / 2;
+            // ==================== POSITION ====================
+            const shoulderCenter = {
+                x: (leftShoulder.x + rightShoulder.x) / 2,
+                y: (leftShoulder.y + rightShoulder.y) / 2,
+                z: (leftShoulder.z + rightShoulder.z) / 2
+            };
             
-            const hipCenterX = (leftHip.x + rightHip.x) / 2;
-            const hipCenterY = (leftHip.y + rightHip.y) / 2;
-            const hipCenterZ = (leftHip.z + rightHip.z) / 2;
+            const hipCenter = {
+                x: (leftHip.x + rightHip.x) / 2,
+                y: (leftHip.y + rightHip.y) / 2,
+                z: (leftHip.z + rightHip.z) / 2
+            };
             
-            // Chest anchor point (weighted toward shoulders for armor)
-            const chestX = shoulderCenterX * 0.7 + hipCenterX * 0.3;
-            const chestY = shoulderCenterY * 0.7 + hipCenterY * 0.3;
-            const chestZ = shoulderCenterZ * 0.7 + hipCenterZ * 0.3;
+            // Chest anchor (weighted toward shoulders)
+            const chestX = shoulderCenter.x * 0.6 + hipCenter.x * 0.4;
+            const chestY = shoulderCenter.y * 0.6 + hipCenter.y * 0.4;
+            const chestZ = shoulderCenter.z * 0.6 + hipCenter.z * 0.4;
             
-            // Convert to Three.js world coordinates
-            // Adjusted mapping for better positioning
-            const targetPosX = (chestX - 0.5) * 2.5;      // Horizontal position
-            const targetPosY = -(chestY - 0.5) * 2.5;     // Vertical position (flipped)
-            const targetPosZ = -chestZ * 2 - 0.5;         // Depth position
+            // Convert to Three.js coordinates with improved mapping
+            const targetPos = new THREE.Vector3(
+                (chestX - 0.5) * 2.8,
+                -(chestY - 0.4) * 2.8,
+                -chestZ * 2.5 - 0.3
+            );
             
-            // Apply smoothing for stable tracking
-            smoothedPosX += (targetPosX - smoothedPosX) * POSITION_SMOOTHING;
-            smoothedPosY += (targetPosY - smoothedPosY) * POSITION_SMOOTHING;
-            smoothedPosZ += (targetPosZ - smoothedPosZ) * POSITION_SMOOTHING;
+            // Smooth position
+            smoothedPos.lerp(targetPos, CONFIG.POSITION_SMOOTHING);
+            armorModel.position.copy(smoothedPos);
             
-            armorModel.position.set(smoothedPosX, smoothedPosY, smoothedPosZ);
-            
-            // ==================== SMART SCALING ====================
-            // Calculate body proportions for distance estimation
+            // ==================== SCALE ====================
             const shoulderWidth = Math.sqrt(
                 Math.pow(rightShoulder.x - leftShoulder.x, 2) +
                 Math.pow(rightShoulder.y - leftShoulder.y, 2)
             );
             
             const torsoHeight = Math.sqrt(
-                Math.pow(shoulderCenterX - hipCenterX, 2) +
-                Math.pow(shoulderCenterY - hipCenterY, 2)
+                Math.pow(shoulderCenter.x - hipCenter.x, 2) +
+                Math.pow(shoulderCenter.y - hipCenter.y, 2)
             );
             
-            // Use nose depth as distance indicator
-            const depthValue = Math.max(0.1, Math.abs(nose.z));
+            // Distance estimation from nose depth
+            const depthValue = Math.max(0.05, Math.abs(nose.z));
+            const depthScale = Math.max(0.4, Math.min(3, 1 / depthValue));
             
-            // Calculate scale based on body size and distance
-            const bodyProportionScale = (shoulderWidth * 0.6 + torsoHeight * 0.4) * 5;
-            const depthFactor = Math.max(0.3, Math.min(5, 0.8 / depthValue));
-            const targetScale = bodyProportionScale * depthFactor * 0.2;
+            // Combined scale calculation
+            const bodyScale = (shoulderWidth * 0.7 + torsoHeight * 0.3) * 6;
+            let targetScale = bodyScale * depthScale * CONFIG.BASE_SCALE;
             
-            // Apply scale limits to prevent extreme sizes
-            const minScale = 0.15;
-            const maxScale = 1.0;
-            const clampedTargetScale = Math.max(minScale, Math.min(maxScale, targetScale));
+            // Clamp scale
+            targetScale = Math.max(CONFIG.MIN_SCALE, Math.min(CONFIG.MAX_SCALE, targetScale));
             
-            // Smooth scale transitions
-            smoothedScale += (clampedTargetScale - smoothedScale) * SCALE_SMOOTHING;
+            // Smooth scale
+            smoothedScale += (targetScale - smoothedScale) * CONFIG.SCALE_SMOOTHING;
+            armorModel.scale.setScalar(smoothedScale);
             
-            armorModel.scale.set(smoothedScale, smoothedScale, smoothedScale);
-            
-            // ==================== ROTATION TRACKING ====================
-            // Shoulder tilt (side lean)
+            // ==================== ROTATION ====================
+            // Shoulder tilt (Z-axis roll)
             const shoulderTilt = Math.atan2(
                 rightShoulder.y - leftShoulder.y,
                 rightShoulder.x - leftShoulder.x
             );
             
-            // Body rotation (turning left/right)
+            // Body turn (Y-axis yaw)
             const depthDiff = rightShoulder.z - leftShoulder.z;
-            const shoulderSpread = Math.abs(rightShoulder.x - leftShoulder.x);
-            
-            let rotationY = 0;
-            if (shoulderSpread > 0.1) {
-                rotationY = depthDiff * 1.5; // Reduced sensitivity
-                rotationY = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, rotationY));
+            const shoulderSpan = Math.abs(rightShoulder.x - leftShoulder.x);
+            let bodyTurn = 0;
+            if (shoulderSpan > 0.08) {
+                bodyTurn = Math.atan2(depthDiff, shoulderSpan);
+                bodyTurn = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, bodyTurn));
             }
             
-            // Body lean (forward/backward)
-            const bodyLean = (shoulderCenterZ - hipCenterZ) * 1.5;
-            const clampedLean = Math.max(-Math.PI / 6, Math.min(Math.PI / 6, bodyLean));
+            // Forward lean (X-axis pitch)
+            const leanAngle = (shoulderCenter.z - hipCenter.z) * 2;
+            const clampedLean = Math.max(-Math.PI / 5, Math.min(Math.PI / 5, leanAngle));
             
-            // Apply rotations - adjusted for mirrored coordinate system
-            armorModel.rotation.set(
-                clampedLean,        // X - forward/backward lean
-                rotationY,          // Y - left/right turn  
-                -shoulderTilt       // Z - side tilt (inverted for mirror)
+            // Target rotation
+            const targetRotation = new THREE.Euler(
+                clampedLean,
+                bodyTurn,
+                -shoulderTilt // Inverted for mirror mode
             );
+            
+            // Smooth rotation
+            smoothedRotation.x += (targetRotation.x - smoothedRotation.x) * CONFIG.ROTATION_SMOOTHING;
+            smoothedRotation.y += (targetRotation.y - smoothedRotation.y) * CONFIG.ROTATION_SMOOTHING;
+            smoothedRotation.z += (targetRotation.z - smoothedRotation.z) * CONFIG.ROTATION_SMOOTHING;
+            
+            armorModel.rotation.copy(smoothedRotation);
+            
+            // ==================== UPDATE RIGIFY BONES ====================
+            if (hasRigifyArmature && CONFIG.USE_RIGIFY_BONES) {
+                updateRigifyBones(landmarks);
+            }
             
             armorModel.visible = true;
             
-            // Update status with tracking info
-            statusDiv.textContent = `⚔️ Tracking (Scale: ${smoothedScale.toFixed(2)})`;
+            // Status update
+            statusDiv.textContent = `⚔️ Tracking | Scale: ${smoothedScale.toFixed(2)}`;
             statusDiv.className = "ready";
+            
+            // Debug info
+            if (CONFIG.DEBUG_MODE) {
+                debugDiv.innerHTML = `
+                    Pos: ${smoothedPos.x.toFixed(2)}, ${smoothedPos.y.toFixed(2)}, ${smoothedPos.z.toFixed(2)}<br>
+                    Scale: ${smoothedScale.toFixed(2)}<br>
+                    Depth: ${depthValue.toFixed(3)}<br>
+                    Shoulder: ${shoulderWidth.toFixed(3)}<br>
+                    Torso: ${torsoHeight.toFixed(3)}<br>
+                    Bones: ${Object.keys(armorBones).length}<br>
+                    Armature: ${hasRigifyArmature ? 'YES' : 'NO'}
+                `;
+            }
         }
         
         // ==================== POSE PROCESSING LOOP ====================
@@ -394,7 +590,7 @@
                     positionArmorOnBody(results.landmarks[0]);
                 } else {
                     if (armorModel) armorModel.visible = false;
-                    statusDiv.textContent = "No person detected - stand in view";
+                    statusDiv.textContent = "No person detected";
                     statusDiv.className = "loading";
                 }
             } catch (error) {
@@ -424,31 +620,39 @@
         // ==================== INITIALIZATION ====================
         async function init() {
             try {
+                console.log("=== AR Armor Try-On Initialization ===");
+                
                 statusDiv.textContent = "Starting camera...";
                 const cameraOk = await initCamera();
                 if (!cameraOk) return;
                 
-                statusDiv.textContent = "Initializing 3D...";
+                statusDiv.textContent = "Initializing 3D renderer...";
                 initThreeJS();
                 
-                statusDiv.textContent = "Loading pose detection...";
+                statusDiv.textContent = "Loading AI pose detection...";
                 const poseOk = await initPoseDetection();
                 if (!poseOk) return;
                 
+                statusDiv.textContent = "Loading 3D model...";
                 loadArmorModel();
                 
-                // Start animation and processing
+                // Start loops
                 animate();
-                setTimeout(() => processPose(), 1500); // Small delay to ensure everything is loaded
+                
+                // Delay pose processing to ensure video is stable
+                setTimeout(() => {
+                    console.log("Starting pose detection loop");
+                    processPose();
+                }, 2000);
                 
             } catch (error) {
-                console.error("Init error:", error);
-                statusDiv.textContent = "Failed to start application";
+                console.error("Initialization error:", error);
+                statusDiv.textContent = `Error: ${error.message}`;
                 statusDiv.className = "error";
             }
         }
         
-        // Start the application
+        // ==================== START ====================
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {
