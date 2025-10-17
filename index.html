@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Armor Try-On</title>
+    <title>AR Armor Try-On - Fixed</title>
     <style>
         * {
             margin: 0;
@@ -60,6 +60,19 @@
         .ready { color: #00ff00; }
         .loading { color: #ffaa00; }
         .error { color: #ff0000; }
+        
+        #debug {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #0f0;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 11px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -67,6 +80,7 @@
         <video id="video" autoplay playsinline muted></video>
         <canvas id="canvas3d"></canvas>
         <div id="status" class="loading">Initializing...</div>
+        <div id="debug"></div>
     </div>
 
     <script type="importmap">
@@ -87,33 +101,34 @@
         const CONFIG = {
             MODEL_PATH: './armour.glb',
             
-            // Simple orientation - glTF +Y Up handles coordinate conversion
-            MIRROR_MODE: true,  // Flip model to face camera in selfie mode
-            
             // Tracking quality
             MIN_VISIBILITY: 0.6,
             MIN_DETECTION_CONFIDENCE: 0.5,
             
-            // Smoothing (lower = smoother but more lag)
+            // Smoothing (0-1, lower = smoother but more lag)
             POSITION_SMOOTHING: 0.25,
-            ROTATION_SMOOTHING: 0.2,
+            ROTATION_SMOOTHING: 0.2,  // Now using quaternion slerp
             SCALE_SMOOTHING: 0.15,
             
             // Scale adjustments
-            BASE_SCALE: 0.5,        // Adjust if armor appears too big/small
+            BASE_SCALE: 0.5,
             MIN_SCALE: 0.2,
             MAX_SCALE: 1.2,
             
-            // Model positioning offsets (fine-tune if needed)
-            VERTICAL_OFFSET: 0,     // Move up/down (positive = up)
-            HORIZONTAL_OFFSET: 0,   // Move left/right (positive = right)
-            DEPTH_OFFSET: -0.3      // Move forward/back (negative = toward camera)
+            // Fine-tune positioning
+            VERTICAL_OFFSET: 0,
+            HORIZONTAL_OFFSET: 0,
+            DEPTH_OFFSET: -0.3,
+            
+            // Debug mode
+            DEBUG: false
         };
         
         // ==================== GLOBALS ====================
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas3d');
         const statusDiv = document.getElementById('status');
+        const debugDiv = document.getElementById('debug');
         
         let poseLandmarker;
         let scene, camera, renderer;
@@ -121,10 +136,17 @@
         let lastVideoTime = -1;
         let isModelLoaded = false;
         
-        // Smoothing buffers
+        // Smoothing using Quaternions (NO Euler angles!)
         let smoothedScale = CONFIG.BASE_SCALE;
         let smoothedPos = new THREE.Vector3(0, 0, 0);
-        let smoothedRotation = new THREE.Euler(0, 0, 0);
+        let smoothedQuat = new THREE.Quaternion(); // Using Quaternion instead of Euler!
+        let targetQuat = new THREE.Quaternion();
+        
+        // Base orientation for mirror mode
+        const mirrorQuat = new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(0, 1, 0),
+            Math.PI  // 180 degrees around Y-axis
+        );
         
         // ==================== CAMERA SETUP ====================
         async function initCamera() {
@@ -188,7 +210,6 @@
         function initThreeJS() {
             scene = new THREE.Scene();
             
-            // Camera matching video perspective
             camera = new THREE.PerspectiveCamera(
                 63,
                 window.innerWidth / window.innerHeight,
@@ -208,7 +229,7 @@
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.outputColorSpace = THREE.SRGBColorSpace;
             
-            // Enhanced lighting for armor materials
+            // Lighting
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
             
@@ -237,20 +258,17 @@
             loader.load(
                 CONFIG.MODEL_PATH,
                 (gltf) => {
-                    console.log("=== Model Loaded Successfully ===");
+                    console.log("=== Model Loaded ===");
                     
                     const loadedModel = gltf.scene;
                     
-                    // Log model structure
+                    // Optimize meshes
                     let meshCount = 0;
                     loadedModel.traverse((child) => {
                         if (child.isMesh) {
                             meshCount++;
-                            // Optimize rendering
                             child.frustumCulled = false;
-                            child.castShadow = true;
                             
-                            // Ensure materials render properly
                             if (child.material) {
                                 if (Array.isArray(child.material)) {
                                     child.material.forEach(mat => {
@@ -265,33 +283,23 @@
                         }
                     });
                     
-                    console.log(`Model contains ${meshCount} mesh(es)`);
+                    console.log(`Model has ${meshCount} mesh(es)`);
                     
-                    // Calculate bounds for proper scaling
+                    // Normalize model to unit size
                     const box = new THREE.Box3().setFromObject(loadedModel);
                     const center = box.getCenter(new THREE.Vector3());
                     const size = box.getSize(new THREE.Vector3());
                     
-                    console.log("Model dimensions:", {
-                        size: size.toArray().map(v => v.toFixed(2)),
-                        center: center.toArray().map(v => v.toFixed(2))
-                    });
+                    console.log("Original dimensions:", size.toArray().map(v => v.toFixed(3)));
                     
-                    // Normalize model size
                     const maxDim = Math.max(size.x, size.y, size.z);
                     const normalizeScale = 1.0 / maxDim;
                     loadedModel.scale.setScalar(normalizeScale);
-                    
-                    // Center the model at origin
                     loadedModel.position.sub(center.multiplyScalar(normalizeScale));
                     
-                    // CRITICAL: Only apply mirror flip if needed
-                    // glTF +Y Up export already handled Z-up to Y-up conversion
-                    if (CONFIG.MIRROR_MODE) {
-                        loadedModel.rotation.y = Math.PI; // 180° to face camera
-                    }
+                    // CRITICAL: DON'T apply rotation here! 
+                    // We'll handle orientation via quaternions during tracking
                     
-                    // Create container for tracking transformations
                     const modelGroup = new THREE.Group();
                     modelGroup.add(loadedModel);
                     modelGroup.scale.setScalar(CONFIG.BASE_SCALE);
@@ -301,12 +309,11 @@
                     armorModel.visible = false;
                     isModelLoaded = true;
                     
-                    console.log("✓ Armor loaded and ready");
-                    console.log("Applied transformations:");
-                    console.log("  - Normalized scale:", normalizeScale.toFixed(3));
-                    console.log("  - Mirror mode:", CONFIG.MIRROR_MODE ? "ON (180° Y)" : "OFF");
-                    console.log("  - Base scale:", CONFIG.BASE_SCALE);
+                    // Initialize quaternion to mirror orientation
+                    armorModel.quaternion.copy(mirrorQuat);
+                    smoothedQuat.copy(mirrorQuat);
                     
+                    console.log("✓ Model ready (using Quaternion rotation)");
                     statusDiv.textContent = "Ready - stand in view";
                     statusDiv.className = "ready";
                 },
@@ -318,7 +325,7 @@
                 },
                 (error) => {
                     console.error("Model load error:", error);
-                    statusDiv.textContent = "Model load failed - check console";
+                    statusDiv.textContent = "Model load failed";
                     statusDiv.className = "error";
                 }
             );
@@ -328,14 +335,13 @@
         function positionArmorOnBody(landmarks) {
             if (!armorModel || !isModelLoaded) return;
             
-            // Key body landmarks
             const leftShoulder = landmarks[11];
             const rightShoulder = landmarks[12];
             const leftHip = landmarks[23];
             const rightHip = landmarks[24];
             const nose = landmarks[0];
             
-            // Visibility check - ensure key points are visible
+            // Visibility check
             if (leftShoulder.visibility < CONFIG.MIN_VISIBILITY || 
                 rightShoulder.visibility < CONFIG.MIN_VISIBILITY ||
                 leftHip.visibility < CONFIG.MIN_VISIBILITY || 
@@ -346,7 +352,7 @@
                 return;
             }
             
-            // ==================== CALCULATE BODY CENTER POINTS ====================
+            // ==================== BODY CENTER POINTS ====================
             const shoulderCenter = {
                 x: (leftShoulder.x + rightShoulder.x) / 2,
                 y: (leftShoulder.y + rightShoulder.y) / 2,
@@ -359,25 +365,24 @@
                 z: (leftHip.z + rightHip.z) / 2
             };
             
-            // Chest anchor point (weighted toward shoulders for chest armor)
+            // Chest anchor (weighted toward shoulders)
             const chestX = shoulderCenter.x * 0.6 + hipCenter.x * 0.4;
             const chestY = shoulderCenter.y * 0.6 + hipCenter.y * 0.4;
             const chestZ = shoulderCenter.z * 0.6 + hipCenter.z * 0.4;
             
-            // ==================== POSITION ====================
-            // Convert MediaPipe normalized coordinates to Three.js world space
+            // ==================== POSITION (MediaPipe to Three.js coords) ====================
+            // MediaPipe: (0,0) = top-left, (1,1) = bottom-right, Z = depth
+            // Three.js: (-X, +X), (-Y, +Y), (-Z = toward camera)
             const targetPos = new THREE.Vector3(
-                (chestX - 0.5) * 2.8 + CONFIG.HORIZONTAL_OFFSET,
-                -(chestY - 0.4) * 2.8 + CONFIG.VERTICAL_OFFSET,
-                -chestZ * 2.5 + CONFIG.DEPTH_OFFSET
+                (chestX - 0.5) * 2.8 + CONFIG.HORIZONTAL_OFFSET,  // Center X
+                -(chestY - 0.4) * 2.8 + CONFIG.VERTICAL_OFFSET,   // Invert Y
+                -chestZ * 2.5 + CONFIG.DEPTH_OFFSET                // Depth
             );
             
-            // Apply smooth interpolation for stable tracking
             smoothedPos.lerp(targetPos, CONFIG.POSITION_SMOOTHING);
             armorModel.position.copy(smoothedPos);
             
             // ==================== SCALE ====================
-            // Calculate body dimensions for distance estimation
             const shoulderWidth = Math.sqrt(
                 Math.pow(rightShoulder.x - leftShoulder.x, 2) +
                 Math.pow(rightShoulder.y - leftShoulder.y, 2)
@@ -388,29 +393,23 @@
                 Math.pow(shoulderCenter.y - hipCenter.y, 2)
             );
             
-            // Use nose depth as distance indicator
             const depthValue = Math.max(0.05, Math.abs(nose.z));
             const depthScale = Math.max(0.4, Math.min(3, 1 / depthValue));
             
-            // Combined scale calculation
             const bodyScale = (shoulderWidth * 0.7 + torsoHeight * 0.3) * 6;
             let targetScale = bodyScale * depthScale * CONFIG.BASE_SCALE;
-            
-            // Clamp scale to prevent extreme sizes
             targetScale = Math.max(CONFIG.MIN_SCALE, Math.min(CONFIG.MAX_SCALE, targetScale));
             
-            // Smooth scale transitions
             smoothedScale += (targetScale - smoothedScale) * CONFIG.SCALE_SMOOTHING;
             armorModel.scale.setScalar(smoothedScale);
             
-            // ==================== ROTATION ====================
-            // Shoulder tilt (Z-axis roll - side lean)
+            // ==================== ROTATION (Using Quaternions!) ====================
+            // Calculate rotation angles
             const shoulderTilt = Math.atan2(
                 rightShoulder.y - leftShoulder.y,
                 rightShoulder.x - leftShoulder.x
             );
             
-            // Body turn (Y-axis yaw - left/right rotation)
             const depthDiff = rightShoulder.z - leftShoulder.z;
             const shoulderSpan = Math.abs(rightShoulder.x - leftShoulder.x);
             let bodyTurn = 0;
@@ -419,31 +418,55 @@
                 bodyTurn = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, bodyTurn));
             }
             
-            // Forward lean (X-axis pitch - forward/backward tilt)
             const leanAngle = (shoulderCenter.z - hipCenter.z) * 2;
             const clampedLean = Math.max(-Math.PI / 5, Math.min(Math.PI / 5, leanAngle));
             
-            // Target rotation
-            const targetRotation = new THREE.Euler(
-                clampedLean,        // X - pitch (lean forward/back)
-                bodyTurn,           // Y - yaw (turn left/right)
-                -shoulderTilt       // Z - roll (lean side to side, inverted for mirror)
+            // Create rotation quaternions for each axis
+            const qPitch = new THREE.Quaternion().setFromAxisAngle(
+                new THREE.Vector3(1, 0, 0),  // X-axis
+                clampedLean
             );
             
-            // Smooth rotation for natural movement
-            smoothedRotation.x += (targetRotation.x - smoothedRotation.x) * CONFIG.ROTATION_SMOOTHING;
-            smoothedRotation.y += (targetRotation.y - smoothedRotation.y) * CONFIG.ROTATION_SMOOTHING;
-            smoothedRotation.z += (targetRotation.z - smoothedRotation.z) * CONFIG.ROTATION_SMOOTHING;
+            const qYaw = new THREE.Quaternion().setFromAxisAngle(
+                new THREE.Vector3(0, 1, 0),  // Y-axis
+                bodyTurn
+            );
             
-            armorModel.rotation.copy(smoothedRotation);
+            const qRoll = new THREE.Quaternion().setFromAxisAngle(
+                new THREE.Vector3(0, 0, 1),  // Z-axis
+                -shoulderTilt  // Inverted for mirror
+            );
             
-            // Show model and update status
+            // Combine rotations: Mirror base * Pitch * Yaw * Roll
+            targetQuat.copy(mirrorQuat);
+            targetQuat.multiply(qPitch);
+            targetQuat.multiply(qYaw);
+            targetQuat.multiply(qRoll);
+            
+            // Smooth rotation using Quaternion SLERP (spherical interpolation)
+            // This prevents gimbal lock and ensures smooth rotation!
+            smoothedQuat.slerp(targetQuat, CONFIG.ROTATION_SMOOTHING);
+            armorModel.quaternion.copy(smoothedQuat);
+            
+            // Show model
             armorModel.visible = true;
-            statusDiv.textContent = `⚔️ Tracking | Scale: ${smoothedScale.toFixed(2)}`;
+            statusDiv.textContent = `⚔️ Tracking`;
             statusDiv.className = "ready";
+            
+            // Debug info
+            if (CONFIG.DEBUG) {
+                const euler = new THREE.Euler().setFromQuaternion(smoothedQuat);
+                debugDiv.innerHTML = `
+                    Pos: ${smoothedPos.x.toFixed(2)}, ${smoothedPos.y.toFixed(2)}, ${smoothedPos.z.toFixed(2)}<br>
+                    Rot: ${THREE.MathUtils.radToDeg(euler.x).toFixed(0)}°, ${THREE.MathUtils.radToDeg(euler.y).toFixed(0)}°, ${THREE.MathUtils.radToDeg(euler.z).toFixed(0)}°<br>
+                    Scale: ${smoothedScale.toFixed(2)}<br>
+                    Quat: ${smoothedQuat.x.toFixed(2)}, ${smoothedQuat.y.toFixed(2)}, ${smoothedQuat.z.toFixed(2)}, ${smoothedQuat.w.toFixed(2)}
+                `;
+                debugDiv.style.display = 'block';
+            }
         }
         
-        // ==================== POSE PROCESSING LOOP ====================
+        // ==================== POSE PROCESSING ====================
         function processPose() {
             if (!poseLandmarker || video.currentTime === lastVideoTime) {
                 requestAnimationFrame(processPose);
@@ -489,39 +512,33 @@
         // ==================== INITIALIZATION ====================
         async function init() {
             try {
-                console.log("=== AR Armor Try-On Initialization ===");
+                console.log("=== AR Armor Try-On (Quaternion-based) ===");
                 
-                statusDiv.textContent = "Starting camera...";
                 const cameraOk = await initCamera();
                 if (!cameraOk) return;
                 
-                statusDiv.textContent = "Initializing 3D renderer...";
                 initThreeJS();
                 
-                statusDiv.textContent = "Loading AI pose detection...";
                 const poseOk = await initPoseDetection();
                 if (!poseOk) return;
                 
-                statusDiv.textContent = "Loading 3D model...";
                 loadArmorModel();
                 
-                // Start render and pose loops
                 animate();
                 
-                // Delay pose processing to ensure video is stable
                 setTimeout(() => {
-                    console.log("Starting pose detection loop");
+                    console.log("Starting pose detection");
                     processPose();
                 }, 2000);
                 
             } catch (error) {
-                console.error("Initialization error:", error);
+                console.error("Init error:", error);
                 statusDiv.textContent = `Error: ${error.message}`;
                 statusDiv.className = "error";
             }
         }
         
-        // ==================== START APPLICATION ====================
+        // ==================== START ====================
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {
@@ -530,5 +547,3 @@
     </script>
 </body>
 </html>
-
-
